@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Your App Name",
+    "slug": "your-app-slug",
+    "scheme": "yourappscheme",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.yourusername.yourappslug",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.yourusername.yourappslug",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "We need access to your photos to let you pick images."
+      },
+      "appleTeamId": "YOUR_APPLE_TEAM_ID"
+    },
+    "newArchEnabled": true
+  }
+} 

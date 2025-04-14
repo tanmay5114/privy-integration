@@ -2,6 +2,7 @@
 // This file provides polyfills for Node.js built-ins used by various crypto libraries
 
 import { Buffer } from 'buffer';
+import { Platform } from 'react-native';
 global.Buffer = Buffer;
 
 // Import core crypto functionality
@@ -23,21 +24,15 @@ if (typeof global.TextDecoder === 'undefined') {
   global.TextDecoder = require('text-encoding').TextDecoder;
 }
 
-// Warn on missing global instead of crashing
-const originalGet = Object.getOwnPropertyDescriptor(Object.prototype, '__lookupGetter__')?.value;
-if (originalGet) {
-  Object.defineProperty(Object.prototype, '__lookupGetter__', {
-    value: function(prop: string) {
-      try {
-        return originalGet.call(this, prop);
-      } catch (e) {
-        console.warn('__lookupGetter__ polyfill error:', e);
-        return undefined;
-      }
-    },
-    configurable: true,
-    enumerable: false,
-  });
+// Add ReadableStream polyfill
+if (typeof global.ReadableStream === 'undefined') {
+  const { ReadableStream } = require('web-streams-polyfill');
+  global.ReadableStream = ReadableStream;
+}
+
+// Ensure EXPO_OS is defined
+if (typeof process.env.EXPO_OS === 'undefined') {
+  process.env.EXPO_OS = Platform.OS;
 }
 
 // Export a function that ensures Buffer is available

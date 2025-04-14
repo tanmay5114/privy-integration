@@ -135,4 +135,86 @@ export const deleteChat = async (req: Request, res: Response) => {
     console.error('Error deleting chat:', error);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
+};
+
+// Bulk delete multiple chats
+export const bulkDeleteChats = async (req: Request, res: Response) => {
+  try {
+    const { chatIds } = req.body;
+    const userId = req.user.walletAddress;
+    
+    if (!chatIds || !Array.isArray(chatIds) || chatIds.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Chat IDs array is required' 
+      });
+    }
+    
+    // Find all chats by IDs
+    const chats = await Chat.find({ 
+      id: { $in: chatIds },
+      userId: userId  // Only find chats that belong to the user
+    });
+    
+    if (chats.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No matching chats found' 
+      });
+    }
+    
+    // Extract IDs of the chats that were actually found and belong to the user
+    const validChatIds = chats.map(chat => chat.id);
+    
+    // Delete the chats and their messages
+    const [chatDeleteResult, messageDeleteResult] = await Promise.all([
+      Chat.deleteMany({ id: { $in: validChatIds } }),
+      Message.deleteMany({ chatId: { $in: validChatIds } })
+    ]);
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: `${chatDeleteResult.deletedCount} chats and their associated messages deleted successfully`,
+      deletedChats: validChatIds
+    });
+  } catch (error) {
+    console.error('Error bulk deleting chats:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+// Delete all chats for a user
+export const deleteAllChats = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.walletAddress;
+    
+    // Find all chats belonging to the user
+    const chats = await Chat.find({ userId });
+    
+    if (chats.length === 0) {
+      return res.status(200).json({ 
+        success: true, 
+        message: 'No chats found to delete',
+        deletedCount: 0
+      });
+    }
+    
+    // Extract IDs of all user's chats
+    const chatIds = chats.map(chat => chat.id);
+    
+    // Delete all chats and their messages
+    const [chatDeleteResult, messageDeleteResult] = await Promise.all([
+      Chat.deleteMany({ userId }),
+      Message.deleteMany({ chatId: { $in: chatIds } })
+    ]);
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: `${chatDeleteResult.deletedCount} chats and their associated messages deleted successfully`,
+      deletedCount: chatDeleteResult.deletedCount
+    });
+  } catch (error) {
+    console.error('Error deleting all chats:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 }; 

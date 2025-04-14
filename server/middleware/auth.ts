@@ -51,12 +51,22 @@ export const allowAuthenticatedOrCreateUser = async (req: Request, res: Response
 
     // If user doesn't exist, create a new one
     if (!user) {
-      user = new User({
-        walletAddress,
-        username: null,
-        profilePicUrl: null
-      });
-      await user.save();
+      try {
+        user = new User({
+          walletAddress,
+          username: null,
+          profilePicUrl: null
+        });
+        await user.save();
+        console.log(`Created new user with wallet address: ${walletAddress}`);
+      } catch (createError) {
+        // Check if another process created the user in the meantime (race condition)
+        user = await User.findOne({ walletAddress });
+        if (!user) {
+          console.error('Failed to create user:', createError);
+          return res.status(500).json({ success: false, message: 'Failed to create user' });
+        }
+      }
     }
 
     // Set user in request object

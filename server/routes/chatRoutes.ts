@@ -3,7 +3,8 @@ import {
   getChatById, 
   getChatsByUserId, 
   saveChat, 
-  deleteChat 
+  deleteChat,
+  bulkDeleteChats
 } from '../controllers/chatController';
 import { verifyWalletAddress, allowAuthenticatedOrCreateUser } from '../middleware/auth';
 
@@ -14,5 +15,6 @@ router.get('/chat/:id', verifyWalletAddress, getChatById);
 router.get('/chats', verifyWalletAddress, getChatsByUserId);
 router.post('/chat', allowAuthenticatedOrCreateUser, saveChat);
 router.delete('/chat/:id', verifyWalletAddress, deleteChat);
+router.delete('/chats/bulk', verifyWalletAddress, bulkDeleteChats);
 
 export default router; 

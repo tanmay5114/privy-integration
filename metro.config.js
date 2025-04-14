@@ -17,7 +17,8 @@ config.resolver = {
     crypto: require.resolve('react-native-quick-crypto'),
     buffer: require.resolve('react-native-buffer'),
     stream: require.resolve('stream-browserify'),
-    util: require.resolve('util/'),
+    'web-streams-polyfill': require.resolve('web-streams-polyfill'),
+    process: require.resolve('process/browser'),
   },
 };
 

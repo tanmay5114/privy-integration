@@ -104,7 +104,6 @@ web-build/
 
 # macOS
 *.swp
-*.lock
 
 # VSCode
 .vscode/

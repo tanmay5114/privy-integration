@@ -51,6 +51,13 @@ export async function fetchChat(chatId: string, walletAddress?: string | null): 
     });
     
     if (!response.ok) {
+      // For 404s, just log at debug level - these are expected for new chats
+      if (response.status === 404) {
+        console.log(`Chat not found: ${chatId} - this is normal for new chats`);
+        return null;
+      }
+      
+      // For other errors, log as error
       console.error('Failed to fetch chat:', response.status, response.statusText);
       throw new Error(`Failed to fetch chat: ${response.status} ${response.statusText}`);
     }
@@ -58,7 +65,10 @@ export async function fetchChat(chatId: string, walletAddress?: string | null): 
     const data = await response.json();
     return data.success ? data.data : null;
   } catch (error) {
-    console.error('Error fetching chat:', error);
+    // Don't log 404-related errors as they're expected for new chats
+    if (error instanceof Error && !error.message.includes('404')) {
+      console.error('Error fetching chat:', error);
+    }
     return null;
   }
 }
@@ -135,30 +145,48 @@ export async function saveChat(chat: { id: string; title: string; }, walletAddre
   }
 }
 
+// Standardize message format to ensure consistency between client and server
+export function standardizeMessageFormat(message: any): any {
+  // Get content from message - handle different formats
+  const messageContent = typeof message.content === 'string' 
+    ? message.content 
+    : message.content instanceof Object
+      ? JSON.stringify(message.content)
+      : '';
+  
+  // Fallback content if everything is empty
+  const fallbackText = 'Message content unavailable';
+      
+  // Process parts to ensure they have valid text property
+  const processedParts = Array.isArray(message.parts) 
+    ? message.parts.map((part: any) => {
+        const partText = part.text || messageContent;
+        return {
+          type: part.type || 'text',
+          text: partText.trim() !== '' ? partText : fallbackText
+        };
+      }) 
+    : [{ 
+        type: 'text', 
+        text: messageContent.trim() !== '' ? messageContent : fallbackText
+      }];
+      
+  // Ensure message has the exact format expected by the server
+  return {
+    id: message.id,
+    chatId: message.chatId,
+    role: message.role,
+    parts: processedParts,
+    // Ensure attachments are properly formatted
+    attachments: Array.isArray(message.attachments) ? 
+      message.attachments : []
+  };
+}
+
 export async function saveMessages(messages: any[], walletAddress?: string | null): Promise<string> {
   try {
     // Create properly formatted messages that will pass server validation
-    const validMessages = messages.map(message => {
-      // Ensure message has the exact format expected by the server
-      return {
-        id: message.id,
-        chatId: message.chatId,
-        role: message.role,
-        // Ensure parts has correct format with required text field
-        parts: message.parts?.length ? 
-          message.parts.map((part: any) => ({
-            type: part.type || 'text',
-            text: part.text || message.content || ''
-          })) : 
-          [{ 
-            type: 'text', 
-            text: message.content || '' 
-          }],
-        // Ensure attachments are properly formatted
-        attachments: Array.isArray(message.attachments) ? 
-          message.attachments : []
-      };
-    });
+    const validMessages = messages.map(standardizeMessageFormat);
 
     // Log the exact payload for debugging (remove in production)
     console.log('Sending message payload:', JSON.stringify(validMessages));
@@ -199,6 +227,59 @@ export async function deleteChat(chatId: string, walletAddress?: string | null):
   } catch (error) {
     console.error('Error deleting chat:', error);
     return false;
+  }
+}
+
+export async function bulkDeleteChats(chatIds: string[], walletAddress?: string | null): Promise<{
+  success: boolean;
+  deletedChats?: string[];
+}> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/chats/bulk`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(walletAddress),
+      body: JSON.stringify({ chatIds }),
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to bulk delete chats:', response.status, response.statusText);
+      return { success: false };
+    }
+    
+    const data = await response.json();
+    return { 
+      success: true, 
+      deletedChats: data.deletedChats || [] 
+    };
+  } catch (error) {
+    console.error('Error bulk deleting chats:', error);
+    return { success: false };
+  }
+}
+
+export async function deleteAllChats(walletAddress?: string | null): Promise<{
+  success: boolean;
+  count?: number;
+}> {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/chats/all`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(walletAddress)
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to delete all chats:', response.status, response.statusText);
+      return { success: false };
+    }
+    
+    const data = await response.json();
+    return { 
+      success: true, 
+      count: data.deletedCount || 0 
+    };
+  } catch (error) {
+    console.error('Error deleting all chats:', error);
+    return { success: false };
   }
 }
 

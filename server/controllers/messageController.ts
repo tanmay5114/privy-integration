@@ -102,13 +102,34 @@ export const saveMessages = async (req: Request, res: Response) => {
         });
       }
       
+      // Validate and process parts to ensure they have valid text
+      const processedParts = Array.isArray(parts) ? parts.map(part => {
+        // If part.text is empty or undefined, set a fallback text
+        if (!part.text || part.text.trim() === '') {
+          console.warn(`Empty text found in message part, using fallback text`);
+          return {
+            ...part,
+            text: 'Message content unavailable'
+          };
+        }
+        return part;
+      }) : [];
+      
+      // Ensure parts has at least one item with non-empty text
+      if (processedParts.length === 0) {
+        processedParts.push({
+          type: 'text',
+          text: 'Message content unavailable'
+        });
+      }
+      
       // Check if message already exists
       const existingMessage = await Message.findOne({ id });
       
       if (existingMessage) {
         // Update existing message
         existingMessage.role = role;
-        existingMessage.parts = parts || [];
+        existingMessage.parts = processedParts;
         existingMessage.attachments = attachments || [];
         
         const updatedMessage = await existingMessage.save();
@@ -119,7 +140,7 @@ export const saveMessages = async (req: Request, res: Response) => {
           id,
           chatId,
           role,
-          parts: parts || [],
+          parts: processedParts,
           attachments: attachments || [],
         });
         

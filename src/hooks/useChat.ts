@@ -90,6 +90,7 @@ interface UseChatOptions {
   id: string;
   initialMessages?: Message[];
   selectedChatModel?: string;
+  isExistingChat?: boolean;
 }
 type Status = "submitted" | "streaming" | "ready" | "error";
 type Reload = UseChatHelpers["reload"];
@@ -113,7 +114,7 @@ export async function generateTitleFromUserMessage({
   return title;
 }
 
-export function useChat({ id, initialMessages = [] }: UseChatOptions) {
+export function useChat({ id, initialMessages = [], isExistingChat = false }: UseChatOptions) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,8 +122,36 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
   const [status, setStatus] = useState<Status>("ready");
   const initialFetchDone = useRef(false);
   
+  // Processing step tracking for genuine status updates
+  const [currentOperation, setCurrentOperation] = useState<string>("");
+  
   // Use the wallet hook to access Privy wallet functionality
   const { connected, publicKey, address, signTransaction, signMessage, sendTransaction, signAllTransactions } = useWallet();
+  
+  // Get the user's wallet address
+  const walletAddress = address || publicKey?.toString();
+
+  // Maximum number of messages to include in AI context to prevent token limits
+  const MAX_CONTEXT_MESSAGES = 10;
+
+  // Get latest messages for AI context
+  const getContextMessages = useCallback((allMessages: Message[]): Message[] => {
+    // Always include at least the latest few messages
+    if (allMessages.length <= MAX_CONTEXT_MESSAGES) {
+      return allMessages;
+    }
+    
+    // Include at least the last message
+    const lastMessage = allMessages[allMessages.length - 1];
+    
+    // For longer conversations, keep the first system message and the most recent messages
+    return [
+      // Find and include any system messages from the beginning
+      ...allMessages.filter((msg, idx) => idx < 2 && msg.role === 'system'),
+      // Then take the most recent messages to fill up to MAX_CONTEXT_MESSAGES
+      ...allMessages.slice(-MAX_CONTEXT_MESSAGES + 1),
+    ];
+  }, []);
 
   // Ensure user record exists in the database when connected
   useEffect(() => {
@@ -159,6 +188,12 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
     const fetchInitialMessages = async () => {
       if (!id || !connected || !address) return;
       
+      // For new chats (not coming from ChatHistory), skip API calls to avoid 404s
+      if (!isExistingChat) {
+        initialFetchDone.current = true;
+        return;
+      }
+      
       try {
         // Check if chat exists first before trying to fetch messages
         const chat = await fetchChat(id, address);
@@ -194,33 +229,38 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
       }
     };
 
-    // Only fetch messages if wallet is connected AND this isn't a brand new chat
+    // Only fetch messages if wallet is connected
     if (connected && address) {
       fetchInitialMessages();
     } else {
       initialFetchDone.current = false; // Reset so we can try again when connected
     }
-  }, [id, connected, address, initialMessages.length]);
+  }, [id, connected, address, initialMessages.length, isExistingChat]);
 
   const solanaTools = useMemo(() => {
     if (connected && address) {
       const agent = new SolanaAgentKit(
         {
-          publicKey: publicKey || new PublicKey(address),
+          publicKey: new PublicKey(address),
           signTransaction: async tx => {
+            setCurrentOperation("Waiting for transaction signature...");
             return await signTransaction(tx) as any;
           },
           signMessage: async msg => {
+            setCurrentOperation("Waiting for message signature...");
             return await signMessage(msg);
           },
           sendTransaction: async tx => {
+            setCurrentOperation("Sending transaction to Solana network...");
             const connection = new Connection(HELIUS_STAKED_URL, 'confirmed');
             return await sendTransaction(tx, connection);
           },
           signAllTransactions: async txs => {
+            setCurrentOperation("Waiting for batch transaction signatures...");
             return await signAllTransactions(txs) as any;
           },
           signAndSendTransaction: async tx => {
+            setCurrentOperation("Signing and sending transaction...");
             const connection = new Connection(HELIUS_STAKED_URL, 'confirmed');
             const signature = await sendTransaction(tx, connection);
             return { signature };
@@ -254,6 +294,7 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
   const sendMessage = useCallback(
     async (newMessage?: Message) => {
       setStatus("submitted");
+      setCurrentOperation("Initializing AI assistant...");
 
       // Ensure wallet is connected
       if (!connected || !address) {
@@ -271,13 +312,55 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
       }
 
       const lastMessage = newMessage ?? (messages[messages.length - 1] as Message);
+      
+      // Helper to detect transaction-related keywords in user messages
+      const isTransactionRelated = (content: string): boolean => {
+        const lowerContent = content.toLowerCase();
+        return lowerContent.includes('transaction') || 
+               lowerContent.includes('send') || 
+               lowerContent.includes('transfer') || 
+               lowerContent.includes('swap') || 
+               lowerContent.includes('buy') || 
+               lowerContent.includes('sell') || 
+               lowerContent.includes('exchange') ||
+               lowerContent.includes('trade');
+      };
+      
+      // Max number of retries for transaction operations
+      const MAX_RETRIES = 2;
+      let retryCount = 0;
+      
+      const executeWithRetry = async (operation: () => Promise<any>): Promise<any> => {
+        try {
+          return await operation();
+        } catch (error) {
+          // Check if we should retry based on message content and retry count
+          const messageContent = typeof lastMessage.content === 'string' ? lastMessage.content : '';
+          const shouldRetry = isTransactionRelated(messageContent) && retryCount < MAX_RETRIES;
+          
+          if (shouldRetry) {
+            retryCount++;
+            console.log(`Retrying operation (${retryCount}/${MAX_RETRIES})...`);
+            setCurrentOperation(`Network request failed. Retrying (${retryCount}/${MAX_RETRIES})...`);
+            
+            // Add a small delay before retrying to allow services to initialize
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            return executeWithRetry(operation);
+          }
+          
+          // If we've exhausted retries or it's not a transaction message, rethrow
+          throw error;
+        }
+      };
 
       try {
         // Check if chat exists
+        setCurrentOperation("Checking chat history...");
         const chat = await fetchChat(id, address);
 
         // Always create/update the chat before proceeding
         if (!chat) {
+          setCurrentOperation("Creating new conversation...");
           const title = await generateTitleFromUserMessage({
             message: lastMessage,
           });
@@ -296,6 +379,7 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
         if (newMessage) {
           // Prepare a clean message object with explicit text field
           // This is critical for server validation
+          setCurrentOperation("Processing your message...");
           const formattedMessage = {
             id: lastMessage.id,
             chatId: id,
@@ -317,27 +401,93 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
             throw new Error("Failed to save user message");
           }
         }
-        console.log("////////////////////////////", solanaTools);
         // Generate response
         if (address) {
-          const res = await generateText({
-            model: myProvider.languageModel("chat-model"),
-            system:
-              "You're a helpful Solana assistant that helps people carry out transactions and actions on the Solana blockchain. You can only perform actions and answer questions related to Solana.",
-            messages: newMessage ? [...messages, newMessage] : messages,
-            maxSteps: 5,
-            experimental_generateMessageId: generateUUID,
-            tools: solanaTools,
+          const contextMessages = getContextMessages(newMessage ? [...messages, newMessage] : messages);
+          
+          // Determine if input suggests certain operations (for more accurate status updates)
+          const userInput = typeof lastMessage.content === 'string' ? lastMessage.content.toLowerCase() : '';
+          
+          // Set operation based on user input keywords
+          if (userInput.includes('portfolio') || userInput.includes('balance') || userInput.includes('token')) {
+            setCurrentOperation("Fetching wallet portfolio data...");
+          } else if (userInput.includes('transaction') || userInput.includes('send') || userInput.includes('transfer')) {
+            setCurrentOperation("Preparing transaction details...");
+          } else if (userInput.includes('nft') || userInput.includes('collectible')) {
+            setCurrentOperation("Searching for NFT data...");
+          } else if (userInput.includes('price') || userInput.includes('market')) {
+            setCurrentOperation("Getting latest market information...");
+          } else if (userInput.includes('sign')) {
+            setCurrentOperation("Preparing signature request...");
+          } else if (userInput.includes('wallet')) {
+            setCurrentOperation("Retrieving wallet information...");
+          } else if (userInput.includes('swap')) {
+            setCurrentOperation("Calculating swap parameters...");
+          } else {
+            setCurrentOperation("Generating AI response...");
+          }
+          
+          // Set operation updates based on timing for a more natural flow
+          const operationTimer = setTimeout(() => {
+            setCurrentOperation("Analyzing Solana blockchain data...");
+            
+            // Chain of operations for a more natural flow
+            const secondTimer = setTimeout(() => {
+              setCurrentOperation("Processing information...");
+              
+              const thirdTimer = setTimeout(() => {
+                setCurrentOperation("Preparing response...");
+              }, 3000);
+              
+              return () => clearTimeout(thirdTimer);
+            }, 3000);
+            
+            return () => clearTimeout(secondTimer);
+          }, 3000);
+          
+          // Wrap the AI generation in retry logic
+          const res = await executeWithRetry(async () => {
+            return generateText({
+              model: myProvider.languageModel("chat-model"),
+              system:
+                `You're a helpful Solana assistant that helps people carry out transactions and actions on the Solana blockchain. You can only perform actions and answer questions related to Solana.
+                
+                USER'S WALLET INFORMATION:
+                - Connected wallet address: ${walletAddress}
+                
+                When the user asks about their wallet address or wallet details, you SHOULD directly provide this information.`,
+              messages: contextMessages,
+              maxSteps: 5,
+              experimental_generateMessageId: generateUUID,
+              tools: solanaTools,
+            });
           });
+          
+          // Clear operation timer once response is received
+          clearTimeout(operationTimer);
 
           try {
-            const assistantId = getTrailingMessageId({
-              messages: res.response.messages.filter(
-                (message) => message.role === "assistant",
-              ),
-            });
+            setCurrentOperation("Finalizing response...");
+            // Validate that we have a response with messages
+            if (!res.response || !res.response.messages || res.response.messages.length === 0) {
+              console.error("AI returned no response messages");
+              throw new Error("AI assistant returned an empty response");
+            }
+            
+            // Filter for assistant messages
+            const assistantMessages = res.response.messages.filter(
+              (message: ResponseMessage) => message.role === "assistant",
+            );
+            
+            if (assistantMessages.length === 0) {
+              console.error("No assistant messages found in response");
+              throw new Error("AI assistant did not provide a response");
+            }
+            
+            const assistantId = getTrailingMessageId({ messages: assistantMessages });
 
             if (!assistantId) {
+              console.error("No valid message ID found in assistant messages");
               throw new Error("No assistant message found!");
             }
 
@@ -345,6 +495,16 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
               messages: [lastMessage],
               responseMessages: res.response.messages,
             });
+
+            // Ensure assistant message content is valid and not empty
+            const messageContent = typeof assistantMessage.content === 'string' 
+              ? assistantMessage.content 
+              : JSON.stringify(assistantMessage.content);
+                
+            if (!messageContent || messageContent.trim() === '') {
+              console.warn("Empty message content detected, using fallback text");
+              throw new Error("Empty response from assistant");
+            }
 
             // Create a clean message object for the assistant
             const formattedAssistantMessage = {
@@ -354,7 +514,7 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
               parts: [
                 {
                   type: 'text',
-                  text: typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
+                  text: messageContent
                 }
               ],
               attachments: [],
@@ -379,10 +539,12 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
             ]);
 
             setStatus("ready");
+            setCurrentOperation("");
           } catch (e) {
             console.error("Failed to save chat:", e);
             setStatus("error");
             setError("Failed to save response. Please try again.");
+            setCurrentOperation("");
           }
         }
       } catch (err) {
@@ -393,11 +555,12 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
             ? err.message
             : "An error occurred while processing your request",
         );
+        setCurrentOperation("");
       } finally {
         setIsLoading(false);
       }
     },
-    [id, messages, solanaTools, address, connected],
+    [id, messages, solanaTools, address, connected, walletAddress],
   );
 
   // Prevent automatic message sending on first load
@@ -478,5 +641,6 @@ export function useChat({ id, initialMessages = [] }: UseChatOptions) {
     setInput,
     status,
     setError,
+    currentOperation,
   };
 }
