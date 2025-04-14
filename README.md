@@ -27,33 +27,34 @@ A mobile chat application that enables interaction with Solana blockchain throug
 
 2. Install dependencies:
    ```
-   npm install
+   yarn install
    ```
 
 3. Configure environment variables:
-   - Copy `.env.example` to `.env` in both root and server directories
+   - Copy `.env.local.example` to `.env.local` in root and `.env.example` to `.env` in server directories
    - Fill in the required API keys and configuration
+   - Copy `app.example.json` to `app.json` and update with your app's information
 
 4. Start the server:
    ```
    cd server
-   npm run dev
+   yarn dev
    ```
 
-5. Start the React Native app:
+5. Run the app on iOS (Client):
    ```
-   npm run start
+   npx expo run:ios
    ```
 
-6. Use Expo Go app to scan the QR code and run the app on your device
+**Note:** This app cannot be run with Expo Go as some polyfills used in the project are not compatible with Expo Go. You must use the development build with `npx expo run:ios` or `npx expo run:android`.
 
 ## Environment Variables
 
 The following environment variables are required:
 
 - `OPENAI_API_KEY`: Your OpenAI API key for AI functionality
-- `MONGODB_URI`: MongoDB connection string
-- `HELIUS_STAKED_URL`: Helius RPC URL with API key
+- `MONGODB_URI`: MongoDB connection string (local by default)
+- `HELIUS_STAKED_URL`: Helius RPC URL with API key (Not necessarry staked)
 - `PORT`: Server port (default: 3001)
 
 ## Project Structure
@@ -62,7 +63,7 @@ The following environment variables are required:
   - `screens/`: App screens
   - `components/`: Reusable components
   - `hooks/`: Custom React hooks
-  - `walletProviders/`: Wallet integration
+  - `walletProviders/`: Privy Embedded wallet integration
   - `navigation/`: Navigation setup
   - `assets/`: Images, colors, icons
   - `lib/`: Utility functions and API interactions
@@ -75,6 +76,3 @@ The following environment variables are required:
   - `middleware/`: Custom middleware
   - `db/`: Database connection
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
