@@ -92,11 +92,6 @@ pnpm-lock.yaml
 .cursor-workspace/
 .cursor-settings.json
 
-# Project specific
-.cursor/rules/solana-app-kit-coding-rules.mdc
-app.json
-eas.json
-
 # Expo
 .expo/
 .expo-shared/

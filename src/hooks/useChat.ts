@@ -450,7 +450,12 @@ export function useChat({ id, initialMessages = [], isExistingChat = false }: Us
             return generateText({
               model: myProvider.languageModel("chat-model"),
               system:
-                `You're a helpful Solana assistant that helps people carry out transactions and actions on the Solana blockchain. You can only perform actions and answer questions related to Solana.`,
+                `You're a helpful Solana assistant that helps people carry out transactions and actions on the Solana blockchain. You can only perform actions and answer questions related to Solana.
+                
+                USER'S WALLET INFORMATION:
+                - Connected wallet address: ${walletAddress}
+                
+                When the user asks about their wallet address or wallet details, you SHOULD directly provide this information.`,
               messages: contextMessages,
               maxSteps: 5,
               experimental_generateMessageId: generateUUID,
