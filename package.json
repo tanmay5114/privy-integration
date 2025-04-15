@@ -28,7 +28,7 @@
     "@react-navigation/native-stack": "^7.3.10",
     "@react-navigation/stack": "^7.1.1",
     "@reduxjs/toolkit": "^2.5.1",
-    "@solana-agent-kit/plugin-token": "^2.0.0-beta.5",
+    "@solana-agent-kit/plugin-token": "^2.0.0-beta.11",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.0",
     "@types/uuid": "^10.0.0",
@@ -73,7 +73,7 @@
     "react-native-svg-transformer": "^1.5.0",
     "react-native-webview": "^13.13.5",
     "react-redux": "^9.2.0",
-    "solana-agent-kit": "2.0.0-beta.10",
+    "solana-agent-kit": "2.0.0-beta.11",
     "stream-browserify": "^3.0.0",
     "tailwind-merge": "^3.2.0",
     "text-encoding": "^0.7.0",
@@ -86,7 +86,8 @@
     "@react-native/eslint-config": "0.77.0",
     "@types/react": "^18.2.6",
     "eslint": "^8.19.0",
-    "prettier": "2.8.8"
+    "prettier": "2.8.8",
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18"

@@ -1,4 +1,3 @@
-// File: /src/services/walletProviders/privy.ts
 import {
   useLogin,
   usePrivy,
