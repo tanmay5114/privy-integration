@@ -12,15 +12,6 @@ A mobile chat application that enables interaction with Solana blockchain throug
 
 ## Demo
 
-<!-- GitHub markdown approach -->
-![Demo](https://github.com/bhu1tyagi/privy-sak-react-native/blob/main/assets/demo.mp4?raw=true)
-
-<!-- HTML approach (works in GitHub) -->
-<video src="https://github.com/bhu1tyagi/privy-sak-react-native/blob/main/assets/demo.mp4?raw=true" controls="controls" style="max-width: 730px;">
-</video>
-
-<!-- Direct link -->
-[Watch Demo Video](https://github.com/bhu1tyagi/privy-sak-react-native/blob/main/assets/demo.mp4?raw=true)
 
 ## Prerequisites
 
