@@ -16,7 +16,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import COLORS from '@/assets/colors';
 import ProfileScreen from '@/screens/ProfileScreen';
-import ChatScreen from '@/screens/ChatScreen';
 import ChatHistoryScreen from '@/screens/ChatHistoryScreen';
 
 const Tab = createBottomTabNavigator();
