@@ -35,6 +35,21 @@ if (typeof process.env.EXPO_OS === 'undefined') {
   process.env.EXPO_OS = Platform.OS;
 }
 
+// Polyfill for axios in Hermes environment
+try {
+  // Try to load axios
+  const axios = require('axios');
+  
+  // Check if axios.default is undefined but axios has methods
+  if (!axios.default && axios.request) {
+    // This happens with Hermes - patch it
+    // @ts-ignore
+    axios.default = axios;
+  }
+} catch (e) {
+  console.warn('Failed to preload axios:', e);
+}
+
 // Export a function that ensures Buffer is available
 export const ensureBuffer = () => {
   if (typeof global.Buffer === 'undefined') {
