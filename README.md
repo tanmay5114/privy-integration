@@ -10,6 +10,10 @@ A mobile chat application that enables interaction with Solana blockchain throug
 - Chat history management
 - User profile management
 
+## Demo
+
+https://github.com/bhu1tyagi/privy-sak-react-native/assets/demo.mp4
+
 ## Prerequisites
 
 - Node.js (v16+)
