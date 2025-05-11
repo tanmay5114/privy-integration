@@ -48,27 +48,30 @@ export const upload = multer({
 });
 
 // Upload file controller
-export const uploadFile = async (req: Request, res: Response) => {
+export const uploadFile = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' });
+      res.status(400).json({ success: false, error: 'No file uploaded' });
+      return;
     }
     
     const file = req.file;
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const fileUrl = `${baseUrl}/uploads/${file.filename}`;
     
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       url: fileUrl,
       pathname: file.filename,
       contentType: file.mimetype
     });
+    return;
   } catch (error) {
     console.error('Error uploading file:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false, 
       error: 'Failed to upload file' 
     });
+    return;
   }
 }; 

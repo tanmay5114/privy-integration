@@ -4,8 +4,8 @@ export const darkTheme = {
   // Background colors
   background: {
     primary: COLORS.black,
-    secondary: COLORS.darkBg.primary,
-    tertiary: COLORS.darkBg.secondary,
+    secondary: COLORS.darkBg.secondary,
+    tertiary: COLORS.darkBg.tertiary,
     card: COLORS.darkSurface.card,
     modal: COLORS.darkSurface.modal,
   },
@@ -21,8 +21,8 @@ export const darkTheme = {
   
   // Border colors
   border: {
-    primary: 'rgba(255, 255, 255, 0.1)',
-    secondary: 'rgba(255, 255, 255, 0.05)',
+    primary: COLORS.greyBorder,
+    secondary: COLORS.greyBorderdark,
     focus: COLORS.brandPrimary,
   },
   
@@ -56,9 +56,9 @@ export const darkTheme = {
   
   // Common gradients
   gradients: {
-    background: ['#1A1A1A', '#121212', '#050505'],
-    primary: [COLORS.brandPrimary, '#27B6C0'],
-    danger: ['#E74C3C', '#C0392B'],
+    background: COLORS.gradients.darkGrey,
+    primary: COLORS.gradients.primary,
+    danger: COLORS.gradients.danger,
     card: [COLORS.darkSurface.card, COLORS.darkBg.primary],
   },
   

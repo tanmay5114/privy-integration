@@ -1,41 +1,52 @@
-import mongoose from 'mongoose';
+import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/privyChat';
+// Ensure Prisma client is initialized only once
+declare global {
+  // allow global `var` declarations
+  // eslint-disable-next-line no-var
+  var prisma: PrismaClient | undefined;
+}
 
-// Connection options
-const options = {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-} as mongoose.ConnectOptions;
+const prisma = global.prisma || new PrismaClient();
 
-// Connect to MongoDB
+if (process.env.NODE_ENV !== 'production') {
+  global.prisma = prisma;
+}
+
 async function connectToDatabase() {
   try {
-    await mongoose.connect(MONGODB_URI, options);
-    console.log('Connected to MongoDB successfully');
+    // Test the connection
+    await prisma.$connect();
+    console.log('Successfully connected to the database using Prisma');
   } catch (error) {
-    console.error('MongoDB connection error:', error);
+    console.error('Failed to connect to the database:', error);
     process.exit(1);
   }
 }
 
-// Handle connection events
-mongoose.connection.on('error', (err) => {
-  console.error('MongoDB connection error:', err);
-});
+// Handle graceful shutdown
+async function disconnectFromDatabase() {
+  try {
+    await prisma.$disconnect();
+    console.log('Disconnected from the database');
+  } catch (error) {
+    console.error('Error disconnecting from the database:', error);
+    process.exit(1);
+  }
+}
 
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
-});
-
-// Handle application termination
+// Handle process termination
 process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  console.log('MongoDB connection closed due to app termination');
+  await disconnectFromDatabase();
   process.exit(0);
 });
 
-export default connectToDatabase; 
+process.on('SIGTERM', async () => {
+  await disconnectFromDatabase();
+  process.exit(0);
+});
+
+export { prisma, connectToDatabase, disconnectFromDatabase }; 

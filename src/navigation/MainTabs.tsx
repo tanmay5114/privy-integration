@@ -17,6 +17,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import COLORS from '@/assets/colors';
 import ProfileScreen from '@/screens/ProfileScreen';
 import ChatHistoryScreen from '@/screens/ChatHistoryScreen';
+import DashboardScreen from '@/screens/DashboardScreen';
+import SearchScreen from '@/screens/SearchScreen';
+import SwapScreen from '../screens/SwapScreen';
+import WalletDrawer from '../components/WalletDrawer';
 
 const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
@@ -26,6 +30,7 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
 // Custom animated tab bar component
 const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const [translateX] = useState(new Animated.Value(0));
+  const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
   const totalWidth = width;
   const tabWidth = totalWidth / state.routes.length;
   
@@ -39,103 +44,123 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
   }, [state.index, tabWidth, translateX]);
   
   return (
-    <View style={styles.customTabContainer}>
-      <LinearGradient
-        colors={['rgba(15, 15, 15, 0.8)', 'rgba(0, 0, 0, 1)', 'rgba(0, 0, 0, 1)']}
-        style={styles.backgroundGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      >
-        <BlurView intensity={90} tint="dark" style={styles.blurView}>
-          <View style={styles.tabBarInner}>
-            {/* Animated indicator */}
-            <Animated.View 
-              style={[
-                styles.tabIndicator,
-                { 
-                  transform: [{ translateX }],
-                  width: tabWidth,
-                }
-              ]} 
-            />
-            
-            {state.routes.map((route, index) => {
-              const { options } = descriptors[route.key];
-              const isFocused = state.index === index;
-              const label = options.tabBarLabel || route.name;
+    <>
+      <View style={styles.customTabContainer}>
+        <LinearGradient
+          colors={['#1E1E1E', '#1E1E1E']}
+          style={styles.backgroundGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        >
+          <BlurView intensity={90} tint="dark" style={styles.blurView}>
+            <View style={styles.tabBarInner}>
+              {/* Animated indicator */}
+              <Animated.View 
+                style={[
+                  styles.tabIndicator,
+                  { 
+                    transform: [{ translateX }],
+                    width: tabWidth,
+                  }
+                ]} 
+              />
               
-              let iconName: IconName = 'help-circle-outline';
-              switch (route.name) {
-                case 'ChatHistoryTab':
-                  iconName = isFocused ? 'chatbubbles' : 'chatbubbles-outline';
-                  break;
-                case 'ProfileTab':
-                  iconName = isFocused ? 'person' : 'person-outline';
-                  break;
-              }
-              
-              const onPress = () => {
-                if (route.name === 'ChatTab') {
-                  navigation.dispatch(
-                    CommonActions.navigate({
-                      name: 'Chat',
-                    })
-                  );
-                  return;
+              {state.routes.map((route, index) => {
+                const { options } = descriptors[route.key];
+                const isFocused = state.index === index;
+                const label = options.tabBarLabel || route.name;
+                
+                let iconName: IconName = 'help-circle-outline';
+                switch (route.name) {
+                  case 'SearchTab':
+                    iconName = isFocused ? 'search' : 'search-outline';
+                    break;
+                  case 'SwapTab':
+                    iconName = isFocused ? 'swap-horizontal' : 'swap-horizontal-outline';
+                    break;
+                  case 'ChatHistoryTab':
+                    iconName = isFocused ? 'chatbubbles' : 'chatbubbles-outline';
+                    break;
+                  case 'ProfileTab':
+                    iconName = isFocused ? 'person' : 'person-outline';
+                    break;
                 }
                 
-                const event = navigation.emit({
-                  type: 'tabPress',
-                  target: route.key,
-                  canPreventDefault: true,
-                });
+                const onPress = () => {
+                  if (route.name === 'ProfileTab') {
+                    if (!isFocused) {
+                      navigation.navigate(route.name);
+                    }
+                    return;
+                  }
+                  
+                  if (route.name === 'ChatTab') {
+                    navigation.dispatch(
+                      CommonActions.navigate({
+                        name: 'Chat',
+                      })
+                    );
+                    return;
+                  }
+                  
+                  const event = navigation.emit({
+                    type: 'tabPress',
+                    target: route.key,
+                    canPreventDefault: true,
+                  });
+                  
+                  if (!isFocused && !event.defaultPrevented) {
+                    navigation.navigate(route.name);
+                  }
+                };
                 
-                if (!isFocused && !event.defaultPrevented) {
-                  navigation.navigate(route.name);
-                }
-              };
-              
-              // Create animated values for icon and text
-              const opacity = isFocused ? 1 : 0.7;
-              const scale = isFocused ? 1.05 : 1;
-              
-              return (
-                <TouchableOpacity
-                  key={index}
-                  onPress={onPress}
-                  style={styles.tabBarButton}
-                  activeOpacity={0.7}
-                >
-                  <Animated.View 
-                    style={[
-                      styles.tabItem,
-                      { 
-                        transform: [{ scale }],
-                        opacity
-                      }
-                    ]}
+                // Create animated values for icon and text
+                const opacity = isFocused ? 1 : 0.7;
+                const scale = isFocused ? 1.05 : 1;
+                
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={onPress}
+                    style={styles.tabBarButton}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons 
-                      name={iconName} 
-                      size={24} 
-                      color={isFocused ? COLORS.brandPrimary : COLORS.darkText.tertiary} 
-                    />
-                    <Animated.Text 
+                    <Animated.View 
                       style={[
-                        styles.tabText,
-                        { color: isFocused ? COLORS.brandPrimary : COLORS.darkText.tertiary }
+                        styles.tabItem,
+                        { 
+                          transform: [{ scale }],
+                          opacity
+                        }
                       ]}
                     >
-                      {label as string}
-                    </Animated.Text>
-                  </Animated.View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </BlurView>
-      </LinearGradient>
-    </View>
+                      <Ionicons 
+                        name={iconName} 
+                        size={24} 
+                        color={'#fff'} 
+                      />
+                      <Animated.Text 
+                        style={[
+                          styles.tabText,
+                          { color: '#fff' }
+                        ]}
+                      >
+                        {label as string}
+                      </Animated.Text>
+                    </Animated.View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </BlurView>
+        </LinearGradient>
+      </View>
+      
+      <WalletDrawer 
+        visible={walletDrawerVisible}
+        onClose={() => setWalletDrawerVisible(false)}
+      />
+    </>
   );
 };
 
@@ -185,7 +210,7 @@ const AnimatedScreen: React.FC<AnimatedScreenProps> = ({ children, isFocused }) 
 // Wrap each screen component to add bottom padding for the tab bar
 const SafeAreaWrapper: React.FC<{children: React.ReactNode}> = ({ children }) => {
   // Calculate the tab bar height based on platform
-  const tabBarHeight = Platform.OS === 'ios' ? 90 : 70;
+  const tabBarHeight = Platform.OS === 'ios' ? 60 : 50;
   
   return (
     <View style={{ flex: 1, paddingBottom: tabBarHeight }}>
@@ -228,10 +253,32 @@ const AnimatedProfileScreen: React.FC<any> = (props) => {
   );
 };
 
+const AnimatedDashboardScreen: React.FC<any> = (props) => {
+  const isFocused = useIsFocused();
+  return (
+    <AnimatedScreen isFocused={isFocused}>
+      <SafeAreaWrapper>
+        <DashboardScreen {...props} />
+      </SafeAreaWrapper>
+    </AnimatedScreen>
+  );
+};
+
+const AnimatedSwapScreen: React.FC<any> = (props) => {
+  const isFocused = useIsFocused();
+  return (
+    <AnimatedScreen isFocused={isFocused}>
+      <SafeAreaWrapper>
+        <SwapScreen {...props} />
+      </SafeAreaWrapper>
+    </AnimatedScreen>
+  );
+};
+
 export default function MainTabs() {
   return (
     <Tab.Navigator
-      initialRouteName="ChatHistoryTab"
+      initialRouteName="DashboardTab"
       tabBar={props => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
@@ -240,14 +287,27 @@ export default function MainTabs() {
         tabBarInactiveTintColor: COLORS.darkText.tertiary,
       }}
     >
-      {/* <Tab.Screen
-        name="ChatTab"
-        component={AnimatedChatScreen}
+      <Tab.Screen
+        name="DashboardTab"
+        component={AnimatedDashboardScreen}
         options={{
-          tabBarLabel: 'Chat',
+          tabBarLabel: 'Dashboard',
         }}
-      /> */}
-      
+      />
+      <Tab.Screen
+        name="SearchTab"
+        component={SearchScreen}
+        options={{
+          tabBarLabel: 'Search',
+        }}
+      />
+      <Tab.Screen
+        name="SwapTab"
+        component={AnimatedSwapScreen}
+        options={{
+          tabBarLabel: 'Swap',
+        }}
+      />
       <Tab.Screen
         name="ChatHistoryTab"
         component={AnimatedChatHistoryScreen}
@@ -255,7 +315,6 @@ export default function MainTabs() {
           tabBarLabel: 'Chat',
         }}
       />
-      
       <Tab.Screen
         name="ProfileTab"
         component={AnimatedProfileScreen}
@@ -280,6 +339,7 @@ const styles = StyleSheet.create({
   backgroundGradient: {
     flex: 1,
     paddingBottom: 0,
+    backgroundColor: '#1E1E1E',
   },
   blurView: {
     flex: 1,

@@ -23,6 +23,8 @@ import { Ionicons } from '@expo/vector-icons';
 import COLORS from '@/assets/colors';
 import { fetchChats, deleteChat, bulkDeleteChats, deleteAllChats } from '@/lib/utils';
 import { useWallet } from '@/walletProviders';
+import AppHeader from '../components/AppHeader';
+import WalletDrawer from '../components/WalletDrawer';
 
 const { width, height } = Dimensions.get('window');
 
@@ -272,6 +274,9 @@ export default function ChatHistoryScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
+  
+  // Wallet drawer state
+  const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
   
   // Check for deletion params from ChatScreen
   useEffect(() => {
@@ -623,6 +628,8 @@ export default function ChatHistoryScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
+      <AppHeader onUserPress={() => setWalletDrawerVisible(true)} />
+      <WalletDrawer visible={walletDrawerVisible} onClose={() => setWalletDrawerVisible(false)} />
       
       <LinearGradient
         colors={['#1A1A1A', '#121212', '#050505']}

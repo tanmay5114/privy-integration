@@ -1,210 +1,315 @@
 import { Request, Response } from 'express';
-import Message from '../models/Message';
-import Chat from '../models/Chat';
+import prisma from '../db/connect';
+import { MessageRole } from '../../generated/prisma'; // Corrected path for MessageRole
 
-// Get messages by chat ID
-export const getMessagesByChatId = async (req: Request, res: Response) => {
+// Get messages by chat ID (clientChatId)
+export const getMessagesByChatId = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { chatId } = req.params;
-    const userId = req.user.walletAddress;
-    
-    if (!chatId) {
-      return res.status(400).json({ success: false, message: 'Chat ID is required' });
+    const { chatId: clientChatId } = req.params; 
+    const userWalletAddress = req.user?.walletAddress;
+
+    if (!clientChatId) {
+      res.status(400).json({ success: false, message: 'Client Chat ID is required' });
+      return;
     }
-    
-    // Verify the chat exists and belongs to the user
-    const chat = await Chat.findOne({ id: chatId });
+    if (!userWalletAddress) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+
+    const appUser = await prisma.user.findUnique({
+      where: { walletAddress: userWalletAddress },
+      select: { id: true },
+    });
+
+    if (!appUser) {
+      res.status(403).json({ success: false, message: 'User not found or invalid authentication' });
+      return;
+    }
+
+    const chat = await prisma.chat.findUnique({
+      where: { clientChatId }, 
+      select: { id: true, userId: true }, 
+    });
+
     if (!chat) {
-      return res.status(404).json({ success: false, message: 'Chat not found' });
+      res.status(404).json({ success: false, message: 'Chat not found' });
+      return;
     }
-    
-    // Check ownership
-    if (chat.userId !== userId) {
-      return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    if (chat.userId !== appUser.id) {
+      res.status(403).json({ success: false, message: 'Unauthorized to access this chat\'s messages' });
+      return;
     }
-    
-    const messages = await Message.find({ chatId })
-      .sort({ createdAt: 1 })
-      .exec();
-    
-    return res.status(200).json({ success: true, data: messages });
+
+    const messages = await prisma.message.findMany({
+      where: { chatId: chat.id }, 
+      orderBy: { createdAt: 'asc' }, 
+    });
+
+    res.status(200).json({ success: true, data: messages });
+    return;
   } catch (error) {
     console.error('Error fetching messages by chat ID:', error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error' });
+    return;
   }
 };
 
-// Get message by ID
-export const getMessageById = async (req: Request, res: Response) => {
+// Get message by ID (clientMessageId)
+export const getMessageById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const userId = req.user.walletAddress;
+    const { id: clientMessageId } = req.params; 
+    const userWalletAddress = req.user?.walletAddress;
+
+    if (!clientMessageId) {
+        res.status(400).json({ success: false, message: 'Client Message ID is required' });
+        return;
+    }
+    if (!userWalletAddress) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+
+    const appUser = await prisma.user.findUnique({
+      where: { walletAddress: userWalletAddress },
+      select: { id: true },
+    });
+
+    if (!appUser) {
+      res.status(403).json({ success: false, message: 'User not found or invalid authentication' });
+      return;
+    }
     
-    const message = await Message.findOne({ id });
-    
+    const message = await prisma.message.findUnique({
+      where: { clientMessageId }, 
+      include: { chat: { select: { userId: true, clientChatId: true } } }, 
+    });
+
     if (!message) {
-      return res.status(404).json({ success: false, message: 'Message not found' });
+      res.status(404).json({ success: false, message: 'Message not found' });
+      return;
+    }
+
+    if (message.chat.userId !== appUser.id) {
+      res.status(403).json({ success: false, message: 'Unauthorized to access this message' });
+      return;
     }
     
-    // Verify the message's chat belongs to the user
-    const chat = await Chat.findOne({ id: message.chatId });
-    if (!chat || chat.userId !== userId) {
-      return res.status(403).json({ success: false, message: 'Unauthorized' });
-    }
-    
-    return res.status(200).json({ success: true, data: message });
+    const { chat: chatInfo, ...messageData } = message; 
+
+    res.status(200).json({ success: true, data: messageData });
+    return;
   } catch (error) {
     console.error('Error fetching message by ID:', error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error' });
+    return;
   }
 };
 
-// Save messages
-export const saveMessages = async (req: Request, res: Response) => {
+// Save messages (batch upsert)
+export const saveMessages = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { messages } = req.body;
-    const userId = req.user.walletAddress;
-    
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Messages array is required' 
-      });
+    const { messages: messagesToSave } = req.body; // Renamed to avoid conflict
+    const userWalletAddress = req.user?.walletAddress;
+
+    if (!userWalletAddress) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
     }
-    
-    const savedMessages = [];
-    
-    for (const messageData of messages) {
-      const { id, chatId, role, parts, attachments } = messageData;
-      
-      // Validate required fields
-      if (!id || !chatId || !role) {
-        return res.status(400).json({
-          success: false,
-          message: 'Each message must have id, chatId, and role',
-        });
+    if (!messagesToSave || !Array.isArray(messagesToSave) || messagesToSave.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: 'Messages array is required',
+      });
+      return;
+    }
+
+    const appUser = await prisma.user.findUnique({
+      where: { walletAddress: userWalletAddress },
+      select: { id: true },
+    });
+
+    if (!appUser) {
+      res.status(403).json({ success: false, message: 'User not found or invalid authentication' });
+      return;
+    }
+
+    const savedMessagesResult = [];
+    const errors = [];
+
+    for (const messageData of messagesToSave) {
+      const { id: clientMessageId, chatId: clientChatId, role, parts, attachments } = messageData;
+
+      if (!clientMessageId || !clientChatId || !role) {
+        errors.push({ clientMessageId, error: 'Each message must have id (clientMessageId), chatId (clientChatId), and role' });
+        continue; 
       }
-      
+
+      // Validate role
+      if (!Object.values(MessageRole).includes(role.toUpperCase() as MessageRole)) {
+        errors.push({ clientMessageId, error: `Invalid role: ${role}. Must be one of ${Object.values(MessageRole).join(', ')}` });
+        continue;
+      }
+      const messageRoleEnum = role.toUpperCase() as MessageRole;
+
+
       // Verify chat exists and belongs to the user
-      const chat = await Chat.findOne({ id: chatId });
+      const chat = await prisma.chat.findUnique({
+        where: { clientChatId }, // Find chat by its client-provided ID
+        select: { id: true, userId: true }, // Get CUID for message linking and userId for auth
+      });
+
       if (!chat) {
-        return res.status(404).json({
-          success: false,
-          message: `Chat with ID ${chatId} not found`,
-        });
+        errors.push({ clientMessageId, error: `Chat with clientChatId ${clientChatId} not found` });
+        continue;
+      }
+
+      if (chat.userId !== appUser.id) {
+        errors.push({ clientMessageId, error: `Unauthorized: Chat with clientChatId ${clientChatId} does not belong to you` });
+        continue;
       }
       
-      // Check ownership
-      if (chat.userId !== userId) {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Unauthorized: This chat does not belong to you' 
-        });
-      }
-      
-      // Validate and process parts to ensure they have valid text
-      const processedParts = Array.isArray(parts) ? parts.map(part => {
-        // If part.text is empty or undefined, set a fallback text
-        if (!part.text || part.text.trim() === '') {
-          console.warn(`Empty text found in message part, using fallback text`);
-          return {
-            ...part,
-            text: 'Message content unavailable'
-          };
+      // Process parts as in original code (ensure text is not empty)
+      const processedParts = Array.isArray(parts) ? parts.map((part: any) => {
+        if (!part.text || String(part.text).trim() === '') {
+          return { ...part, text: 'Message content unavailable' };
         }
         return part;
       }) : [];
-      
-      // Ensure parts has at least one item with non-empty text
       if (processedParts.length === 0) {
-        processedParts.push({
-          type: 'text',
-          text: 'Message content unavailable'
-        });
+        processedParts.push({ type: 'text', text: 'Message content unavailable' });
       }
-      
-      // Check if message already exists
-      const existingMessage = await Message.findOne({ id });
-      
-      if (existingMessage) {
-        // Update existing message
-        existingMessage.role = role;
-        existingMessage.parts = processedParts;
-        existingMessage.attachments = attachments || [];
-        
-        const updatedMessage = await existingMessage.save();
-        savedMessages.push(updatedMessage);
-      } else {
-        // Create new message
-        const newMessage = new Message({
-          id,
-          chatId,
-          role,
-          parts: processedParts,
-          attachments: attachments || [],
+
+
+      try {
+        const upsertedMessage = await prisma.message.upsert({
+          where: { clientMessageId },
+          update: {
+            role: messageRoleEnum,
+            parts: processedParts, // Prisma expects JSON
+            attachments: attachments || [], // Prisma expects JSON or null
+            chatId: chat.id, // Ensure chat CUID is correctly linked
+          },
+          create: {
+            clientMessageId,
+            chatId: chat.id, // Link to chat's CUID
+            role: messageRoleEnum,
+            parts: processedParts,
+            attachments: attachments || [],
+          },
         });
-        
-        const savedMessage = await newMessage.save();
-        savedMessages.push(savedMessage);
+        savedMessagesResult.push(upsertedMessage);
+      } catch (e) {
+        console.error(`Error saving message ${clientMessageId}:`, e);
+        errors.push({ clientMessageId, error: 'Failed to save message to database' });
       }
     }
+
+    if (errors.length > 0 && savedMessagesResult.length === 0) {
+      res.status(400).json({ success: false, message: 'Failed to save any messages.', errors });
+      return;
+    }
     
-    return res.status(201).json({ 
-      success: true, 
-      data: savedMessages 
+    if (errors.length > 0) {
+         res.status(207).json({ // Multi-Status
+            success: true, // Partial success
+            message: 'Some messages were processed with errors.',
+            data: savedMessagesResult,
+            errors,
+        });
+        return;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Messages saved successfully',
+      data: savedMessagesResult,
     });
+    return;
+
   } catch (error) {
-    console.error('Error saving messages:', error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error saving messages batch:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+    return;
   }
 };
 
 // Delete messages by chat ID after timestamp
-export const deleteMessagesByChatIdAfterTimestamp = async (req: Request, res: Response) => {
+export const deleteMessagesByChatIdAfterTimestamp = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { chatId } = req.params;
+    const { chatId: clientChatId } = req.params; // This is clientChatId
     const { timestamp } = req.body;
-    const userId = req.user.walletAddress;
-    
-    if (!chatId || !timestamp) {
-      return res.status(400).json({
+    const userWalletAddress = req.user?.walletAddress;
+
+    if (!clientChatId || !timestamp) {
+      res.status(400).json({
         success: false,
-        message: 'Chat ID and timestamp are required',
+        message: 'Client Chat ID and timestamp are required',
       });
+      return;
     }
-    
+    if (!userWalletAddress) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+
+    const appUser = await prisma.user.findUnique({
+      where: { walletAddress: userWalletAddress },
+      select: { id: true },
+    });
+
+    if (!appUser) {
+      res.status(403).json({ success: false, message: 'User not found or invalid authentication' });
+      return;
+    }
+
     // Verify chat exists and belongs to the user
-    const chat = await Chat.findOne({ id: chatId });
+    const chat = await prisma.chat.findUnique({
+      where: { clientChatId },
+      select: { id: true, userId: true }, // Get CUID for message query and userId for auth
+    });
+
     if (!chat) {
-      return res.status(404).json({
-        success: false,
-        message: 'Chat not found',
-      });
+      res.status(404).json({ success: false, message: 'Chat not found' });
+      return;
     }
-    
-    // Check ownership
-    if (chat.userId !== userId) {
-      return res.status(403).json({
+
+    if (chat.userId !== appUser.id) {
+      res.status(403).json({
         success: false,
         message: 'Unauthorized: This chat does not belong to you',
       });
+      return;
+    }
+
+    let dateFromTimestamp: Date;
+    try {
+      dateFromTimestamp = new Date(timestamp);
+      if (isNaN(dateFromTimestamp.getTime())) {
+        throw new Error('Invalid date timestamp');
+      }
+    } catch (e) {
+      res.status(400).json({ success: false, message: 'Invalid timestamp format' });
+      return;
     }
     
-    // Convert timestamp to Date if it's not already
-    const date = new Date(timestamp);
-    
-    // Delete messages
-    const result = await Message.deleteMany({
-      chatId,
-      createdAt: { $gte: date },
+    const result = await prisma.message.deleteMany({
+      where: {
+        chatId: chat.id, // Use the chat's CUID
+        createdAt: { gte: dateFromTimestamp },
+      },
     });
-    
-    return res.status(200).json({
+
+    res.status(200).json({
       success: true,
-      message: `${result.deletedCount} messages deleted`,
+      message: `${result.count} messages deleted successfully`,
+      deletedCount: result.count,
     });
+    return;
   } catch (error) {
-    console.error('Error deleting messages:', error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Error deleting messages by timestamp:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+    return;
   }
 }; 

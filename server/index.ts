@@ -5,11 +5,12 @@ import morgan from 'morgan';
 import path from 'path';
 import dotenv from 'dotenv';
 
-import connectToDatabase from './db/connect';
+import { connectToDatabase } from './db/connect';
 import chatRoutes from './routes/chatRoutes';
 import messageRoutes from './routes/messageRoutes';
 import fileRoutes from './routes/fileRoutes';
 import userRoutes from './routes/userRoutes';
+import walletRoutes from './routes/walletRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -18,7 +19,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Connect to MongoDB
+// Connect to database
 connectToDatabase();
 
 // Middleware
@@ -40,6 +41,7 @@ app.use('/api', chatRoutes);
 app.use('/api', messageRoutes);
 app.use('/api', userRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api', walletRoutes);
 
 // Health check route
 app.get('/health', (req, res) => {

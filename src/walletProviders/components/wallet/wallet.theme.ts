@@ -27,24 +27,24 @@
  */
 export const WALLET_DEFAULT_THEME = {
   /** Primary background color for the wallet container */
-  '--wallet-bg-primary': '#FFFFFF',
+  '--wallet-bg-primary': '#10141A',
   /** Secondary background color for UI elements like buttons */
-  '--wallet-bg-secondary': '#F2F3F5',
+  '--wallet-bg-secondary': '#181C23',
 
   /** Primary text color for main content */
-  '--wallet-text-primary': '#232324',
+  '--wallet-text-primary': '#FFFFFF',
   /** Secondary text color for supporting content */
-  '--wallet-text-secondary': '#434445',
+  '--wallet-text-secondary': '#A3A9B6',
 
   /** Border color for UI elements */
-  '--wallet-border-color': '#EDEFF3',
+  '--wallet-border-color': '#232833',
   /** Border color for input fields */
-  '--wallet-input-border-color': '#E0E0E0',
+  '--wallet-input-border-color': '#232833',
   /** Text color for input fields */
-  '--wallet-input-text-color': '#232324',
+  '--wallet-input-text-color': '#A3A9B6',
 
   /** Background color for primary action buttons */
-  '--wallet-button-bg': '#2B8EF0',
+  '--wallet-button-bg': '#1DA1F2',
   /** Text color for primary action buttons */
   '--wallet-button-text-color': '#FFFFFF',
 

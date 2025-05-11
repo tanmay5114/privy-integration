@@ -25,6 +25,9 @@
       },
       "appleTeamId": "YY25LDG49N"
     },
-    "newArchEnabled": false
+    "newArchEnabled": false,
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }
