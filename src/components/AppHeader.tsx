@@ -3,15 +3,15 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const AppHeader: React.FC<{ onUserPress?: () => void; onClipboardPress?: () => void }> = ({ onUserPress, onClipboardPress }) => {
+const AppHeader: React.FC<{ onUserPress?: () => void; onClipboardPress?: () => void; onHistoryPress?: () => void }> = ({ onUserPress, onClipboardPress, onHistoryPress }) => {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.headerContainer}>
         <TouchableOpacity style={styles.iconCircle} onPress={onUserPress} activeOpacity={0.7}>
           <Ionicons name="person" size={32} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconCircle} onPress={onClipboardPress} activeOpacity={0.7}>
-          <Ionicons name="clipboard-outline" size={28} color="#fff" />
+        <TouchableOpacity style={styles.iconCircle} onPress={onHistoryPress} activeOpacity={0.7}>
+          <Ionicons name="time-outline" size={28} color="#fff" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>

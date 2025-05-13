@@ -1,37 +1,73 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import COLORS from 'src/assets/colors';
+import COLORS from '../assets/colors';
+import { WalletAsset } from '../services/api';
 
-const HoldingsCard: React.FC = () => (
-  <View style={styles.card}>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-      <Text style={styles.label}>Holdings Value</Text>
-      <Text style={styles.tokensCount}>3 Tokens</Text>
+interface HoldingsCardProps {
+  assets: WalletAsset[];
+  totalUsdValue: number;
+  previousTotalUsdValue?: number; // Optional, for change display
+}
+
+const HoldingsCard: React.FC<HoldingsCardProps> = ({ assets, totalUsdValue, previousTotalUsdValue }) => {
+  const safeTotalUsdValue = typeof totalUsdValue === 'number' && !isNaN(totalUsdValue) ? totalUsdValue : 0;
+  const safePreviousTotalUsdValue = typeof previousTotalUsdValue === 'number' && !isNaN(previousTotalUsdValue) ? previousTotalUsdValue : 0;
+  const changeUsd = safeTotalUsdValue - safePreviousTotalUsdValue;
+  const tokenCount = assets.length;
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.label}>Holdings Value</Text>
+        <Text style={styles.tokenCount}>{tokenCount} Token{tokenCount !== 1 ? 's' : ''}</Text>
+      </View>
+      <View style={styles.valuesRow}>
+        <Text style={styles.value}>${safeTotalUsdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+        <Text style={[styles.change, { color: changeUsd >= 0 ? COLORS.success : COLORS.error }]}> 
+          {changeUsd >= 0 ? '+' : '-'}${Math.abs(changeUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </Text>
+      </View>
     </View>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 8 }}>
-      <Text style={styles.value}>$1,519.87</Text>
-      <Text style={styles.change}>  -$91.36  -5.67%</Text>
-    </View>
-  </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
-  card: {
+  container: {
     backgroundColor: COLORS.darkSurface.card,
     borderRadius: 16,
     padding: 16,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    marginHorizontal: 16,
+    marginTop: 16,
   },
-  label: { color: '#8A99A9', fontSize: 18, fontWeight: 'bold' },
-  value: { color: COLORS.darkText.primary, fontSize: 24, fontWeight: 'bold' },
-  change: { color: COLORS.status.error, fontSize: 16, marginLeft: 8 },
-  tokensCount: { color: '#8A99A9', fontSize: 14 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  label: {
+    color: COLORS.greyLight,
+    fontSize: 14,
+  },
+  tokenCount: {
+    color: COLORS.greyLight,
+    fontSize: 14,
+  },
+  valuesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  value: {
+    color: COLORS.white,
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  change: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 12,
+    alignSelf: 'flex-end',
+  },
 });
 
 export default HoldingsCard; 

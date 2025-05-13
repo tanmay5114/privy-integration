@@ -16,7 +16,7 @@ export const CustomizationProvider: React.FC<{
     ...config,
     // Merge nested objects
     auth: {
-      ...DefaultCustomizationConfig.auth,
+      ...(DefaultCustomizationConfig?.auth || {}),
       ...(config?.auth || {}),
     },
   };

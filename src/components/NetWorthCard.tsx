@@ -1,22 +1,41 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import COLORS from '../assets/colors';
 
-const NetWorthCard: React.FC = () => (
-  <View style={styles.card}>
-    <Text style={styles.label}>Net Worth</Text>
-    <Text style={styles.value}>$1,552.89</Text>
-  </View>
-);
+interface NetWorthCardProps {
+  totalValue: number;
+}
+
+const NetWorthCard: React.FC<NetWorthCardProps> = ({ totalValue }) => {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.label}>Net Worth</Text>
+      <Text style={styles.value}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
-  card: {
+  container: {
     alignItems: 'center',
-    marginVertical: 16,
-    paddingVertical: 40,
-    minHeight: 180,
+    justifyContent: 'center',
+    marginTop: 32,
+    marginBottom: 24,
   },
-  label: { color: '#ccc', fontSize: 20 },
-  value: { color: '#fff', fontSize: 40, fontWeight: 'bold' },
+  label: {
+    color: COLORS.greyLight,
+    fontSize: 20,
+    fontWeight: '400',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  value: {
+    color: COLORS.white,
+    fontSize: 40,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
 });
 
 export default NetWorthCard; 

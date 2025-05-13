@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import COLORS from 'src/assets/colors';
 
 type TokenItemProps = {
@@ -10,10 +10,11 @@ type TokenItemProps = {
   change: string;
   amount: string;
   valueColor?: string;
+  onPress?: () => void;
 };
 
-const TokenItem: React.FC<TokenItemProps> = ({ icon, name, value, price, change, amount, valueColor }) => (
-  <View style={styles.container}>
+const TokenItem: React.FC<TokenItemProps> = ({ icon, name, value, price, change, amount, valueColor, onPress }) => (
+  <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.8}>
     <View style={styles.icon}>{icon}</View>
     <View style={{ flex: 1 }}>
       <Text style={styles.name}>{name}</Text>
@@ -21,7 +22,7 @@ const TokenItem: React.FC<TokenItemProps> = ({ icon, name, value, price, change,
       <Text style={styles.amount}>{amount}</Text>
     </View>
     <Text style={[styles.value, valueColor ? { color: valueColor } : {}]}>{value}</Text>
-  </View>
+  </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({

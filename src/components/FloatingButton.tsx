@@ -3,15 +3,25 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import COLORS from 'src/assets/colors';
 import FabMenu from './FabMenu';
 
-const FloatingButton: React.FC = () => {
-  const [open, setOpen] = useState(false);
+interface FloatingButtonProps {
+  onSend?: () => void;
+  onReceive?: () => void;
+  open?: boolean;
+  setOpen?: (open: boolean) => void;
+}
+
+const FloatingButton: React.FC<FloatingButtonProps> = ({ onSend, onReceive, open, setOpen }) => {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = typeof open === 'boolean' && typeof setOpen === 'function';
+  const actualOpen = isControlled ? open : internalOpen;
+  const actualSetOpen = isControlled ? setOpen! : setInternalOpen;
 
   return (
     <>
-      <TouchableOpacity style={styles.fab} onPress={() => setOpen(true)}>
+      <TouchableOpacity style={styles.fab} onPress={() => actualSetOpen(true)}>
         <Text style={styles.plus}>+</Text>
       </TouchableOpacity>
-      <FabMenu visible={open} onClose={() => setOpen(false)} />
+      <FabMenu visible={actualOpen} onClose={() => actualSetOpen(false)} onSend={onSend} onReceive={onReceive} />
     </>
   );
 };

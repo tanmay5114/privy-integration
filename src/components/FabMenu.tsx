@@ -2,19 +2,21 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import COLORS from 'src/assets/colors';
+import * as Clipboard from 'expo-clipboard';
 
 interface FabMenuProps {
   visible: boolean;
   onClose: () => void;
+  onSend?: () => void;
+  onReceive?: () => void;
 }
 
-const actions = [
-  { label: 'Send', icon: 'paper-plane-outline', onPress: () => {/* handle send */} },
-  { label: 'Receive', icon: 'qr-code-outline', onPress: () => {/* handle receive */} },
-  { label: 'Buy', icon: 'card-outline', onPress: () => {/* handle buy */} },
-];
+export default function FabMenu({ visible, onClose, onSend, onReceive }: FabMenuProps) {
+  const actions = [
+    { label: 'Send', icon: 'paper-plane-outline', onPress: onSend },
+    { label: 'Receive', icon: 'qr-code-outline', onPress: onReceive },
+  ];
 
-export default function FabMenu({ visible, onClose }: FabMenuProps) {
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>

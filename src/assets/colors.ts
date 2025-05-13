@@ -1,35 +1,35 @@
 const COLORS = {
   // Primary palette
   white: '#FFFFFF',
-  black: '#10141A',
+  black: '#000000',
 
   // Dark theme backgrounds
   darkBg: {
-    primary: '#10141A',
-    secondary: '#181C23',
-    tertiary: '#232833',
-    accent: '#1DA1F2',
+    primary: '#10151A',
+    secondary: '#181F29',
+    tertiary: '#232B36',
+    accent: '#2C3542',
   },
   
   // Dark theme surfaces
   darkSurface: {
-    card: '#181C23',
-    modal: '#232833',
-    popup: '#232833',
+    card: '#181F29',
+    modal: '#10151A',
+    popup: '#232B36',
   },
 
   // Grays
-  greyLight: '#F6F7F9',
-  greyMid: '#A3A9B6',
-  greyDark: '#999999',
+  greyLight: '#8A99A9',
+  greyMid: '#6B7A8A',
+  greyDark: '#4A5969',
   greyBorder: '#232833',
   greyBorderdark: '#232833',
   
   // Dark theme text
   darkText: {
     primary: '#FFFFFF',
-    secondary: '#A3A9B6',
-    tertiary: '#6C7383',
+    secondary: '#8A99A9',
+    tertiary: '#6B7A8A',
     disabled: '#3A3F4B',
   },
 
@@ -49,10 +49,10 @@ const COLORS = {
   
   // Status colors
   status: {
-    success: '#00FF00',
-    warning: '#ffcc00',
-    error: '#ff3b30',
-    info: '#34aadc',
+    success: '#22C55E',
+    warning: '#F59E0B',
+    error: '#EF4444',
+    info: '#3B82F6',
   },
 
   // Other usage
@@ -67,9 +67,22 @@ const COLORS = {
   // Gradients (hex values for reference)
   gradients: {
     darkGrey: ['#181C23', '#10141A', '#232833'],
-    primary: ['#1DA1F2', '#00FF00', '#3B82F6'],
-    danger: ['#E74C3C', '#C0392B'],
-  }
+    primary: ['#3B82F6', '#2563EB'],
+    success: ['#22C55E', '#16A34A'],
+    error: ['#EF4444', '#DC2626'],
+    warning: ['#F59E0B', '#D97706'],
+  },
+
+  primary: '#3B82F6',
+  secondary: '#6B7A8A',
+  accent: '#00FFD1',
+  background: '#10151A',
+  surface: '#181F29',
+  text: '#FFFFFF',
+  error: '#EF4444',
+  success: '#22C55E',
+  warning: '#F59E0B',
+  info: '#3B82F6',
 };
 
 export default COLORS;

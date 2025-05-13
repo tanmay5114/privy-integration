@@ -14,6 +14,8 @@ const COINGECKO_API_URL = process.env.COINGECKO_API_URL;
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
 const BIRDEYE_API_URL = process.env.BIRDEYE_API_URL || 'https://public-api.birdeye.so/v1';
 const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY;
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000; // 1 second
 
 interface BirdeyeTokenItem {
   address: string;
@@ -47,6 +49,34 @@ if (!WALLET_PRIVATE_KEY) {
 }
 
 const connection = new Connection(RPC_URL);
+
+// Helper function to wait
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function to handle retries with exponential backoff
+async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  try {
+    const response = await fetch(url, options);
+    
+    // If we get a 429, retry with exponential backoff
+    if (response.status === 429 && retries > 0) {
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, MAX_RETRIES - retries);
+      console.log(`Rate limited by Birdeye API. Retrying in ${delay}ms... (${retries} retries left)`);
+      await wait(delay);
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, MAX_RETRIES - retries);
+      console.log(`Request failed. Retrying in ${delay}ms... (${retries} retries left)`);
+      await wait(delay);
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    throw error;
+  }
+}
 
 export class BlockchainService {
   // Get all assets (tokens) for a wallet
@@ -491,7 +521,7 @@ export class BlockchainService {
         throw new Error('BIRDEYE_API_KEY is not defined in environment variables');
       }
 
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${BIRDEYE_API_URL}/wallet/token_list?wallet=${walletAddress}`,
         {
           headers: {
