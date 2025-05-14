@@ -1,44 +1,46 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import dotenv from 'dotenv';
 
-dotenv.config();
-
-const RPC_URL = process.env.RPC_URL;
-const JUPITER_API_URL = 'https://lite-api.jup.ag/ultra/v1/order';
-
-if (!RPC_URL) {
-  throw new Error('RPC_URL is not defined in environment variables');
-}
-
-const connection = new Connection(RPC_URL);
+const JUPITER_API_URL = 'http://localhost:3001/api/swap';
 
 export class JupiterService {
   // Get a swap order from Jupiter
   static async getSwapOrder(
     inputMint: string,
     outputMint: string,
-    amount: string,
+    amount: number,
     taker?: string
   ) {
     try {
-      const params = new URLSearchParams({
+      const body: any = {
         inputMint,
         outputMint,
         amount,
-        ...(taker && { taker })
+      };
+      if (taker) {
+        body.taker = taker;
+      }
+      console.log('Jupiter service swap order body:',body);
+      const response = await fetch(`${JUPITER_API_URL}/order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
       });
 
-      const response = await fetch(
-        `${JUPITER_API_URL}/order?${params.toString()}`
-      );
-
       if (!response.ok) {
-        throw new Error(`Failed to get swap order: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('JupiterService getSwapOrder error:', response.status, response.statusText, errorText);
+        throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       return await response.json();
-    } catch (error) {
-      throw new Error(`Failed to get swap order: ${error}`);
+    } catch (error: any) {
+      console.error('JupiterService getSwapOrder caught exception:', error.message, error);
+      if (error.message.startsWith('Server error:')) {
+        throw error;
+      }
+      throw new Error(`Failed to get swap order due to: ${error.message || error}`);
     }
   }
 
@@ -60,12 +62,40 @@ export class JupiterService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to execute swap: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('JupiterService executeSwapOrder error:', response.status, response.statusText, errorText);
+        throw new Error(`Server error on execute: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       return await response.json();
-    } catch (error) {
-      throw new Error(`Failed to execute swap: ${error}`);
+    } catch (error: any) {
+      console.error('JupiterService executeSwapOrder caught exception:', error.message, error);
+      if (error.message.startsWith('Server error on execute:')) {
+        throw error;
+      }
+      throw new Error(`Failed to execute swap due to: ${error.message || error}`);
+    }
+  }
+
+  // Get available tokens for swapping (specific to a wallet)
+  static async getAvailableTokens(walletAddress: string) {
+    try {
+      // Construct the specific URL directly
+      const ASSET_API_URL = `http://localhost:3001/api/wallet/${walletAddress}/assets`;
+      const response = await fetch(ASSET_API_URL);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('JupiterService getAvailableTokens error:', response.status, response.statusText, errorText);
+        throw new Error(`Server error on tokens: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error('JupiterService getAvailableTokens caught exception:', error.message, error);
+      if (error.message.startsWith('Server error on tokens:')) {
+        throw error;
+      }
+      throw new Error(`Failed to get available tokens due to: ${error.message || error}`);
     }
   }
 
@@ -77,12 +107,18 @@ export class JupiterService {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to get token balances: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('JupiterService getTokenBalances error:', response.status, response.statusText, errorText);
+        throw new Error(`Server error on balances: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       return await response.json();
-    } catch (error) {
-      throw new Error(`Failed to get token balances: ${error}`);
+    } catch (error: any) {
+      console.error('JupiterService getTokenBalances caught exception:', error.message, error);
+      if (error.message.startsWith('Server error on balances:')) {
+        throw error;
+      }
+      throw new Error(`Failed to get token balances due to: ${error.message || error}`);
     }
   }
-} 
+}

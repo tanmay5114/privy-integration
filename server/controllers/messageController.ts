@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import prisma from '../db/connect';
+import { prisma } from '../db/connect';
 import { MessageRole } from '../../generated/prisma'; // Corrected path for MessageRole
 
 // Get messages by chat ID (clientChatId)

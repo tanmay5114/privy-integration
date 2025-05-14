@@ -1,48 +1,315 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, TextInput, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, TextInput, Image, Modal, FlatList, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSolanaWallets } from '@privy-io/react-auth'; // Import for Privy wallets
+import { Transaction } from '@solana/web3.js'; // Import for Solana Transaction
+import { Buffer } from 'buffer'; // Import Buffer for base64 operations
 import AppHeader from '../components/AppHeader';
 import WalletDrawer from '../components/WalletDrawer';
+import { JupiterService } from '../../server/services/jupiterService';
 
-const TOKEN_DATA = [
-  {
-    name: 'Send',
-    balance: '98,989.318823 SEND',
-    bg: '#3B82F6',
-  },
-  {
-    name: 'Solana',
-    balance: '3.936139534 SOL',
-    bg: '#000',
-  },
-];
+// Placeholder for wallet address - replace with actual wallet integration
+const USER_WALLET_ADDRESS = 'AAc4f6pbyoa82cDvq1iUbipANtuzkL1HXJXH3ikcEXyg'; // Updated placeholder for testing, TODO: Make this dynamic
 
 const SwapScreen: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
+  
+  // Privy Solana Wallets
+  const { wallets, ready } = useSolanaWallets();
+  const wallet = wallets && wallets.length > 0 ? wallets[0] : null;
+
+  // State for tokens
+  const [availableTokens, setAvailableTokens] = useState<any[]>([]);
+  const [inputToken, setInputToken] = useState<any>(null); // Initialize as null
+  const [outputToken, setOutputToken] = useState<any>(null); // Initialize as null
+  const [isTokenListLoading, setIsTokenListLoading] = useState(true);
+  const [tokenListError, setTokenListError] = useState<string | null>(null);
+
+  const [swapQuote, setSwapQuote] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [tokenSelectionFor, setTokenSelectionFor] = useState<'input' | 'output' | null>(null);
+
+  useEffect(() => {
+    const fetchTokens = async () => {
+      setIsTokenListLoading(true);
+      setTokenListError(null);
+      // Check if the wallet address is a valid one before fetching
+      if (!USER_WALLET_ADDRESS || USER_WALLET_ADDRESS.length < 32) { // Removed redundant check
+        setTokenListError("Wallet address not set or invalid. Please connect wallet or update placeholder.");
+        setIsTokenListLoading(false);
+        setInputToken(null);
+        setOutputToken(null);
+        setAvailableTokens([]);
+        return;
+      }
+      try {
+        const tokens = await JupiterService.getAvailableTokens(USER_WALLET_ADDRESS);
+        console.log('Raw tokens response from API:', JSON.stringify(tokens, null, 2)); // Log raw response
+        setAvailableTokens(tokens);
+        
+        const solMintAddress = 'So11111111111111111111111111111111111111112';
+        const defaultSolToken = {
+          name: 'Solana',
+          mintAddress: solMintAddress,
+          balance: '0.00 SOL', // Placeholder balance
+          decimals: 9, // Solana has 9 decimals
+          // TODO: Add other necessary fields like logoURI if your components use them
+        };
+
+        const defaultSendToken = {
+          name: 'Send',
+          mintAddress: 'SENDdRQtYMWaQrBroBrJ2Q53fgVuq95CV9UPGEvpCxa',
+          balance: '0.00 SEND', // Placeholder balance
+          decimals: 6, // Corrected based on user: 1 SEND = 10000 smallest units
+        };
+
+        let finalInputToken = defaultSendToken;
+        let finalOutputToken = null;
+        let finalAvailableTokens = tokens && Array.isArray(tokens) ? [...tokens] : [];
+
+        // Determine Output Token (SOL)
+        const solFromApi = finalAvailableTokens.find(token => token.mintAddress === solMintAddress);
+        finalOutputToken = solFromApi || defaultSolToken;
+
+        // Ensure defaultSendToken is in availableTokens for the modal
+        if (!finalAvailableTokens.find(token => token.mintAddress === defaultSendToken.mintAddress)) {
+          finalAvailableTokens.unshift(defaultSendToken); // Add to beginning if not present
+        }
+
+        // Ensure finalOutputToken (SOL, possibly the local default) is in availableTokens for the modal
+        // (especially if it was the defaultSolToken and not from API)
+        if (finalOutputToken.mintAddress === defaultSolToken.mintAddress && !solFromApi) {
+          if (!finalAvailableTokens.find(token => token.mintAddress === defaultSolToken.mintAddress)) {
+             // Check again because sendToken might be SOL
+            finalAvailableTokens.unshift(defaultSolToken);
+          }
+        }
+        
+        // Handle initial state if API fetch failed or returned empty
+        if (!(tokens && Array.isArray(tokens) && tokens.length > 0)) {
+          if (!tokenListError) { // Don't overwrite a fetch error
+            setTokenListError("Token list from API is empty or invalid. Using local defaults.");
+          }
+        }
+        
+        setInputToken(finalInputToken);
+        setOutputToken(finalOutputToken);
+        setAvailableTokens(finalAvailableTokens);
+
+      } catch (e: any) {
+        // If API fails entirely, set up with local Send and SOL defaults
+        console.error("Failed to fetch token list from API:", e.message);
+        setTokenListError(e.message || "Failed to load token list from API.");
+        
+        const localSol = {
+          name: 'Solana',
+          mintAddress: 'So11111111111111111111111111111111111111112',
+          balance: '0.00 SOL',
+          decimals: 9,
+        };
+        const localSend = {
+          name: 'Send',
+          mintAddress: 'SENDdRQtYMWaQrBroBrJ2Q53fgVuq95CV9UPGEvpCxa', // Ensure this mint is correct for Send token
+          balance: '0.00 SEND',
+          decimals: 4, // Corrected based on user: 1 SEND = 10000 smallest units
+        };
+        setInputToken(localSend);
+        setOutputToken(localSol);
+        setAvailableTokens([localSend, localSol].filter((value, index, self) => 
+            index === self.findIndex((t) => (t.mintAddress === value.mintAddress)) // Ensure unique by mint if send is sol
+        ));
+      } finally {
+        setIsTokenListLoading(false);
+      }
+    };
+    fetchTokens();
+  }, []);
 
   // Keypad handler
   const handleKeyPress = (val: string) => {
     if (val === 'CLEAR') setAmount('');
-    else if (val === 'MAX') setAmount('98989.318823');
-    else if (val === '75%') setAmount((98989.318823 * 0.75).toFixed(6));
-    else if (val === '50%') setAmount((98989.318823 * 0.5).toFixed(6));
+    else if (val === 'MAX' && inputToken && inputToken.balance) setAmount(inputToken.balance.split(' ')[0]);
+    else if (val === '75%' && inputToken && inputToken.balance) setAmount((parseFloat(inputToken.balance.split(' ')[0]) * 0.75).toFixed(6));
+    else if (val === '50%' && inputToken && inputToken.balance) setAmount((parseFloat(inputToken.balance.split(' ')[0]) * 0.5).toFixed(6));
     else if (val === 'DEL') setAmount(amount.slice(0, -1));
     else setAmount(amount + val);
   };
 
+  const handleGetQuote = async () => {
+    if (!inputToken || !outputToken) {
+      setError("Please select input and output tokens.");
+      return;
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+      setError("Please enter a valid amount.");
+      return;
+    }
+    if (inputToken.name === outputToken.name) {
+      setError("Input and output tokens cannot be the same.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setSwapQuote(null);
+    try {
+      // Use actual mint addresses from token data
+      if (!inputToken.mintAddress || !outputToken.mintAddress) {
+        setError("Selected tokens are missing mint addresses. Please ensure tokens have valid mint addresses.");
+        setIsLoading(false);
+        return;
+      }
+      if (!inputToken.hasOwnProperty('decimals')) { // Check if decimals property exists
+        setError(`Decimals not defined for input token ${inputToken.name}.`);
+        setIsLoading(false);
+        return;
+      }
+
+      const inputMint = inputToken.mintAddress;
+      const outputMint = outputToken.mintAddress;
+      const amountInSmallestUnit = parseFloat(amount) * Math.pow(10, inputToken.decimals);
+      
+      const order = await JupiterService.getSwapOrder(
+        inputMint,
+        outputMint,
+        amountInSmallestUnit, // Send amount in smallest unit
+        USER_WALLET_ADDRESS
+      );
+      console.log('Jupiter Service Swap Order:', order);
+      setSwapQuote(order);
+    } catch (e: any) {
+      setError(e.message || "Failed to get swap quote.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExecuteSwap = async () => {
+    if (!wallet || !ready) {
+      setError("Wallet not connected or not ready. Please connect your wallet.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!swapQuote || !swapQuote.order || !swapQuote.order.requestId || !swapQuote.order.transaction) {
+      setError("No valid quote available to execute, or quote is missing transaction details.");
+      setIsLoading(false); // Ensure loading is stopped
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      // --- Wallet Integration Point: Start ---
+      // 1. Get the base64 encoded transaction string from the swapQuote.
+      const unsignedTransactionBase64 = swapQuote.order.transaction;
+
+      // 2. Deserialize the base64 transaction string into a Solana Transaction object
+      let transaction: Transaction;
+      try {
+        const transactionBuffer = Buffer.from(unsignedTransactionBase64, 'base64');
+        transaction = Transaction.from(transactionBuffer);
+      } catch (e: any) {
+        console.error("Failed to deserialize transaction:", e);
+        setError(`Failed to prepare transaction for signing: ${e.message}`);
+        setIsLoading(false);
+        return;
+      }
+
+      // 3. Sign the transaction with the Privy wallet
+      let signedTxObject: Transaction;
+      try {
+        signedTxObject = await wallet.signTransaction!(transaction);
+      } catch (e: any) {
+        console.error("Transaction signing failed or was rejected:", e);
+        setError(`Transaction signing failed: ${e.message}`);
+        setIsLoading(false);
+        return;
+      }
+      
+      // 4. Serialize the signed transaction and convert it to base64
+      let signedTransactionBase64: string;
+      try {
+        // For Jupiter, often requireAllSignatures can be false as Jupiter might co-sign or handle fee payment.
+        // If your backend expects the transaction to be fully signed by the user as the sole/final signer, set to true.
+        const serializedSignedTx = signedTxObject.serialize({ requireAllSignatures: false });
+        signedTransactionBase64 = Buffer.from(serializedSignedTx).toString('base64');
+      } catch (e: any) {
+        console.error("Failed to serialize signed transaction:", e);
+        setError(`Failed to prepare signed transaction for execution: ${e.message}`);
+        setIsLoading(false);
+        return;
+      }
+      // --- Wallet Integration Point: End ---
+
+      if (!signedTransactionBase64) {
+        setError("Transaction signing was cancelled or failed.");
+        setIsLoading(false);
+        return;
+      }
+      
+      const result = await JupiterService.executeSwapOrder(
+        signedTransactionBase64, // Pass the signed transaction
+        swapQuote.order.requestId // Pass the requestId from the order object
+      );
+      console.log("Swap executed:", result);
+      // TODO: Handle successful swap (e.g., show success message, refresh balances, clear amount)
+      setAmount(''); // Clear amount after successful swap
+      setSwapQuote(null); // Clear the quote
+    } catch (e: any) {
+      setError(e.message || "Failed to execute swap.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openTokenModal = (selectionType: 'input' | 'output') => {
+    setTokenSelectionFor(selectionType);
+    setIsModalVisible(true);
+  };
+
+  const handleTokenSelect = (selectedToken: any) => {
+    if (tokenSelectionFor === 'input') {
+      if (outputToken.name === selectedToken.name) { // If selected input is same as current output
+        setOutputToken(inputToken); // Swap them
+      }
+      setInputToken(selectedToken);
+    } else if (tokenSelectionFor === 'output') {
+      if (inputToken.name === selectedToken.name) { // If selected output is same as current input
+        setInputToken(outputToken); // Swap them
+      }
+      setOutputToken(selectedToken);
+    }
+    setIsModalVisible(false);
+    setTokenSelectionFor(null);
+    setSwapQuote(null); // Clear previous quote as tokens changed
+    setError(null); // Clear previous error
+  };
+
   return (
     <ImageBackground source={require('../assets/images/new_dashboard_bg.png')} style={styles.container} resizeMode="cover">
-      <View style={styles.overlay}>
+      <ScrollView style={styles.overlay} contentContainerStyle={styles.scrollContentContainer}>
         <AppHeader onUserPress={() => setWalletDrawerVisible(true)} />
         <WalletDrawer visible={walletDrawerVisible} onClose={() => setWalletDrawerVisible(false)} />
-        {/* Top Token Card */}
-        <View style={styles.tokenCard}>
+        
+        {isTokenListLoading && <Text style={styles.loadingText}>Loading tokens...</Text>}
+        {tokenListError && <Text style={styles.errorText}>{tokenListError}</Text>}
+
+        {/* Top Token Card - Pressable */}
+        <TouchableOpacity onPress={() => openTokenModal('input')} style={styles.tokenCard} disabled={isTokenListLoading || !availableTokens.length}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.tokenName}>Send <Text style={{ fontSize: 18 }}>›</Text></Text>
-            <Text style={styles.tokenBalance}>98,989.318823 SEND</Text>
+            <Text style={styles.tokenNameText}>Pay with:</Text>
+            {inputToken ? (
+              <>
+                <Text style={styles.tokenSelectText}>{inputToken.name} <Text style={{ fontSize: 18 }}>›</Text></Text>
+                <Text style={styles.tokenBalanceText}>Balance: {inputToken.balance ? inputToken.balance.split(' ')[0] : 'N/A'}</Text>
+              </>
+            ) : (
+              <Text style={styles.tokenSelectText}>Select Token <Text style={{ fontSize: 18 }}>›</Text></Text>
+            )}
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Amount Input */}
         <View style={styles.amountInputSection}>
@@ -60,17 +327,48 @@ const SwapScreen: React.FC = () => {
         </View>
 
         {/* Swap Button */}
-        <TouchableOpacity style={styles.swapButton}>
+        <TouchableOpacity style={styles.swapButton} onPress={handleGetQuote} disabled={isLoading}>
           <Ionicons name="swap-vertical" size={28} color="#3ED2C3" />
         </TouchableOpacity>
 
-        {/* Bottom Token Card */}
-        <View style={styles.tokenCard}>
+        {/* Bottom Token Card - Pressable */}
+        <TouchableOpacity onPress={() => openTokenModal('output')} style={styles.tokenCard} disabled={isTokenListLoading || !availableTokens.length}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.tokenName}>Solana <Text style={{ fontSize: 18 }}>›</Text></Text>
-            <Text style={styles.tokenBalance}>3.936139534 SOL</Text>
+            <Text style={styles.tokenNameText}>Receive:</Text>
+            {outputToken ? (
+              <>
+                <Text style={styles.tokenSelectText}>{outputToken.name} <Text style={{ fontSize: 18 }}>›</Text></Text>
+                <Text style={styles.tokenBalanceText}>Balance: {outputToken.balance ? outputToken.balance.split(' ')[0] : 'N/A'}</Text>
+              </>
+            ) : (
+              <Text style={styles.tokenSelectText}>Select Token <Text style={{ fontSize: 18 }}>›</Text></Text>
+            )}
           </View>
-        </View>
+        </TouchableOpacity>
+
+        {/* Display Error and Loading States */}
+        {isLoading && <Text style={styles.loadingText}>Loading...</Text>}
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
+        {/* Display Swap Quote Details (Placeholder) */}
+        {swapQuote && swapQuote.order && (
+          <View style={styles.quoteDetailsContainer}>
+            <Text style={styles.quoteTitle}>Review Swap</Text>
+            <View style={styles.quoteRow}>
+              <Text style={styles.quoteLabel}>You pay:</Text>
+              <Text style={styles.quoteValue}>{amount} {inputToken.name}</Text>
+            </View>
+            <View style={styles.quoteRow}>
+              <Text style={styles.quoteLabel}>You receive (approx.):</Text>
+              <Text style={styles.quoteValue}>{swapQuote.order.outAmount / Math.pow(10, outputToken?.decimals || 0) } {outputToken.name}</Text>
+            </View>
+            {/* TODO: Inspect swapQuote.order object and add more relevant details from Jupiter API */}
+            {/* e.g., Price Impact, Fees. Make sure to access them via swapQuote.order.priceImpactPct etc. */}
+            <TouchableOpacity style={styles.confirmButton} onPress={handleExecuteSwap} disabled={isLoading}>
+              <Text style={styles.confirmButtonText}>Confirm Swap</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Keypad */}
         <View style={styles.keypadContainer}>
@@ -100,7 +398,46 @@ const SwapScreen: React.FC = () => {
             <TouchableOpacity style={styles.keypadNum} onPress={() => handleKeyPress('DEL')}><Ionicons name="backspace-outline" size={22} color="#3ED2C3" /></TouchableOpacity>
           </View>
         </View>
-      </View>
+
+        {/* Token Selection Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={isModalVisible}
+          onRequestClose={() => {
+            setIsModalVisible(!isModalVisible);
+            setTokenSelectionFor(null);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalView}>
+              <Text style={styles.modalTitle}>Select Token</Text>
+              <FlatList
+                data={availableTokens}
+                keyExtractor={(item) => item.mintAddress || item.name}
+                renderItem={({ item }) => (
+                  <TouchableOpacity 
+                    style={styles.modalTokenItem}
+                    onPress={() => handleTokenSelect(item)}
+                  >
+                    <Text style={styles.modalTokenName}>{item.name}</Text>
+                    <Text style={styles.modalTokenBalance}>{item.balance}</Text>
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setIsModalVisible(!isModalVisible);
+                  setTokenSelectionFor(null);
+                }}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
     </ImageBackground>
   );
 };
@@ -109,10 +446,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(16, 20, 26, 0.85)',
+  },
+  scrollContentContainer: {
     padding: 16,
     paddingTop: 25,
-    backgroundColor: 'rgba(16, 20, 26, 0.85)',
-    justifyContent: 'flex-start',
+    flexGrow: 1,
   },
   tokenCard: {
     flexDirection: 'row',
@@ -144,6 +483,22 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 18,
     marginBottom: 2,
+    // TODO: Add onPress handler to allow token selection (e.g., open a modal)
+  },
+  tokenNameText: { // New style for "Pay with:" / "Receive:"
+    color: '#A1A1AA',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  tokenSelectText: { // New style for the selectable token name
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 20, // Made larger
+    marginBottom: 2,
+  },
+  tokenBalanceText: { // New style for balance text in card
+    color: '#A1A1AA',
+    fontSize: 13,
   },
   tokenBalance: {
     color: '#A1A1AA',
@@ -221,6 +576,122 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 22,
     fontWeight: '500',
+  },
+  loadingText: { // Style for loading text
+    color: '#3ED2C3',
+    textAlign: 'center',
+    marginVertical: 10,
+    fontSize: 16,
+  },
+  errorText: { // Style for error text
+    color: 'red',
+    textAlign: 'center',
+    marginVertical: 10,
+    fontSize: 16,
+  },
+  quoteDetailsContainer: { // Style for quote details
+    backgroundColor: '#181F29',
+    borderRadius: 10,
+    padding: 15,
+    marginVertical: 10,
+  },
+  quoteTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10, // Increased margin
+    textAlign: 'center', // Center title
+  },
+  quoteText: {
+    color: '#A1A1AA',
+    fontSize: 14,
+    marginBottom: 3,
+  },
+  quoteRow: { // Style for quote detail row
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  quoteLabel: { // Style for quote detail label
+    color: '#A1A1AA',
+    fontSize: 14,
+  },
+  quoteValue: { // Style for quote detail value
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  confirmButton: {
+    backgroundColor: '#3ED2C3',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  confirmButtonText: {
+    color: '#10151A',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  // Styles for Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalView: {
+    width: '80%',
+    backgroundColor: '#181F29',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 15,
+  },
+  modalTokenItem: {
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    width: '100%',
+    borderBottomWidth: 1,
+    borderBottomColor: '#232B36',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalTokenName: {
+    fontSize: 18,
+    color: '#fff',
+  },
+  modalTokenBalance: {
+    fontSize: 14,
+    color: '#A1A1AA',
+  },
+  closeButton: {
+    backgroundColor: '#3ED2C3',
+    borderRadius: 10,
+    padding: 10,
+    elevation: 2,
+    marginTop: 15,
+    paddingHorizontal: 20,
+  },
+  closeButtonText: {
+    color: '#10151A',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    fontSize: 16,
   },
 });
 

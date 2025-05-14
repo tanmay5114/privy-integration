@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ImageBackground, Modal, Text, TouchableOpacity, Share, Platform, TextInput, ActivityIndicator, FlatList } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, StyleSheet, ImageBackground, Modal, Text, TouchableOpacity, Share, Platform, TextInput, ActivityIndicator, FlatList, Image, Alert } from 'react-native';
 import NetWorthCard from '../components/NetWorthCard';
 import HoldingsCard from '../components/HoldingsCard';
 import TokenList from '../components/TokenList';
@@ -14,13 +14,16 @@ import * as Clipboard from 'expo-clipboard';
 import { useWallet } from '../walletProviders/hooks/useWallet';
 import { useWalletData } from '../hooks/useWalletData';
 import { WalletAsset } from '../services/api';
+import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { Buffer } from 'buffer';
 
 const DashboardScreen: React.FC = () => {
+  console.log('--- DASHBOARD SCREEN RENDERING --- Re-adding Send Logic State ---');
   const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<'send' | 'receive'>('send');
   const [historyVisible, setHistoryVisible] = useState(false);
-  const { address: walletAddress } = useWallet();
+  const { address: walletAddress, sendTransaction } = useWallet();
   const { assets, transactions, loading, error, refreshData, getAssetDetails } = useWalletData();
 
   // Send screen state
@@ -32,9 +35,17 @@ const DashboardScreen: React.FC = () => {
 
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
 
+  // State for send process (re-added)
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [transferInstructions, setTransferInstructions] = useState<any>(null); // We might not set this, but good to have if needed
+
   const handleSend = () => {
+    console.log('[handleSend] Called. Current modalVisible state:', modalVisible);
     setActiveTab('send');
+    setSendError(null); // Clear previous errors when opening modal
     setModalVisible(true);
+    console.log('[handleSend] setModalVisible(true) called. New modalVisible state should reflect soon.');
   };
   const handleReceive = () => {
     setActiveTab('receive');
@@ -47,9 +58,12 @@ const DashboardScreen: React.FC = () => {
     if (walletAddress) Share.share({ message: walletAddress });
   };
 
-  // Update keypad logic to use actual balance
   const handleKeypad = (val: string) => {
-    if (!selectedToken) return;
+    console.log('[handleKeypad] Called with value:', val);
+    if (!selectedToken) {
+      console.log('[handleKeypad] No selectedToken, returning.');
+      return;
+    }
     
     const balance = parseFloat(selectedToken.balance);
     if (val === 'CLEAR') setSendAmount('');
@@ -61,16 +75,272 @@ const DashboardScreen: React.FC = () => {
   };
 
   const handleTokenSend = (token: WalletAsset) => {
+    console.log('[handleTokenSend] Called with token:', token, 'Closing token detail modal.');
     setSelectedToken(token);
     setTokenModalVisible(false);
+    console.log('[handleTokenSend] Starting first setTimeout to open FAB menu.');
     setTimeout(() => {
+      console.log('[handleTokenSend] Inside first setTimeout. Setting fabMenuOpen to true.');
       setFabMenuOpen(true);
+      console.log('[handleTokenSend] Starting second setTimeout to call handleSend and close FAB menu.');
       setTimeout(() => {
+        console.log('[handleTokenSend] Inside second setTimeout. Calling handleSend().');
         handleSend();
+        console.log('[handleTokenSend] Back from handleSend(). Setting fabMenuOpen to false.');
         setFabMenuOpen(false);
       }, 200);
     }, 200);
   };
+
+  // Function to get transfer instructions (re-added)
+  const getTransferInstructions = async () => {
+    if (!walletAddress || !recipient || !sendAmount || !selectedToken) {
+      setSendError('Missing required fields for transfer.');
+      return null;
+    }
+    // Clear previous error when attempting to fetch again
+    setSendError(null);
+    setIsSubmitting(true); // Set submitting true while fetching instructions
+
+    try {
+      const apiBaseUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+      const apiUrl = `${apiBaseUrl}/api/wallet/${walletAddress}/transfer/instructions`;
+      
+      console.log('Fetching transfer instructions with:', {
+        apiUrl,
+        walletAddress,
+        recipient,
+        amount: parseFloat(sendAmount),
+        tokenMint: selectedToken.mint === 'native' ? undefined : selectedToken.mint,
+      });
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toAddress: recipient,
+          amount: parseFloat(sendAmount),
+          tokenMint: selectedToken.mint === 'native' ? undefined : selectedToken.mint,
+        }),
+      });
+
+      const responseBody = await response.text(); // Get raw response body for logging
+      console.log('Raw response from /transfer/instructions:', responseBody);
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = JSON.parse(responseBody); // Try to parse as JSON
+        } catch (e) {
+          errorData = { message: `Server responded with ${response.status}: ${responseBody}` };
+        }
+        console.error('Error fetching transfer instructions:', errorData);
+        setSendError(errorData.message || `Failed to get transfer instructions. Status: ${response.status}`);
+        return null;
+      }
+      
+      const data = JSON.parse(responseBody); // Parse successful response
+      // setTransferInstructions(data); // We might not need to store all instructions in state
+      return data; // Return the instructions directly
+    } catch (e:any) {
+      console.error('Catch block: Error getting transfer instructions:', e);
+      setSendError(e.message || 'Could not fetch transfer instructions due to a network or unexpected error.');
+      return null;
+    } finally {
+      setIsSubmitting(false); // Set submitting false after attempt
+    }
+  };
+
+  // Function to handle the send action (re-added)
+  const handleSendAction = async () => {
+    setSendError(null); // Clear previous error
+
+    if (!walletAddress || !recipient || !sendAmount || !selectedToken) {
+      setSendError('Please fill in all required fields and select a token.');
+      return;
+    }
+
+    if (!sendTransaction) {
+      setSendError('Wallet send function is not available. Is your wallet connected and configured?');
+      console.error('sendTransaction from useWallet is undefined.');
+      return;
+    }
+
+    setIsSubmitting(true); 
+
+    try {
+      // Step 1: Get transfer instructions from your backend
+      const instructionData = await getTransferInstructions(); 
+
+      if (!instructionData || !instructionData.instructions || instructionData.instructions.length === 0) {
+        if (!sendError) { // If getTransferInstructions didn't set a specific error
+          setSendError('Failed to retrieve valid transfer instructions from the server.');
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      console.log('Received instructionData from backend:', JSON.stringify(instructionData, null, 2));
+      console.log('Raw instructions from backend:', instructionData.instructions);
+
+
+      // Step 2: Create a Connection object
+      const rpcUrl = process.env.REACT_APP_RPC_URL || 'https://api.mainnet-beta.solana.com';
+      console.log(`Using RPC URL: ${rpcUrl}`);
+      const connection = new Connection(rpcUrl, 'confirmed');
+
+      // Step 2a: Map plain instruction objects to TransactionInstruction instances
+      const mappedInstructions = instructionData.instructions.map((instr: any) => {
+        if (!instr.programId || !instr.keys || !instr.data) {
+          throw new Error('Invalid instruction structure from backend.');
+        }
+        return new TransactionInstruction({
+          programId: new PublicKey(instr.programId),
+          keys: instr.keys.map((keyMeta: any) => ({
+            pubkey: new PublicKey(keyMeta.pubkey),
+            isSigner: keyMeta.isSigner,
+            isWritable: keyMeta.isWritable,
+          })),
+          data: Buffer.from(instr.data, 'base64'),
+        });
+      });
+      console.log('Mapped TransactionInstructions:', mappedInstructions);
+
+      // Step 2b: Create a new Transaction
+      const transaction = new Transaction();
+      transaction.add(...mappedInstructions);
+
+      // Step 2c: Set feePayer
+      if (instructionData.feePayer) {
+        transaction.feePayer = new PublicKey(instructionData.feePayer);
+        console.log('Using feePayer from backend:', instructionData.feePayer);
+      } else if (walletAddress) {
+        transaction.feePayer = new PublicKey(walletAddress);
+        console.log('Using current walletAddress as feePayer:', walletAddress);
+      } else {
+        setSendError('Fee payer (wallet address) is not available.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Step 2d: Set recentBlockhash
+      if (instructionData.recentBlockhash) {
+        transaction.recentBlockhash = instructionData.recentBlockhash;
+        console.log('Using recentBlockhash from backend:', instructionData.recentBlockhash);
+      } else {
+        console.log('Fetching latest blockhash as it was not provided by backend...');
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        transaction.recentBlockhash = blockhash;
+        console.log('Fetched latest blockhash:', blockhash);
+      }
+      
+      console.log('Constructed transaction object:', transaction);
+      if (!transaction.recentBlockhash) {
+        throw new Error("Transaction recentBlockhash is missing before sending.");
+      }
+      if (!transaction.feePayer) {
+        throw new Error("Transaction feePayer is missing before sending.");
+      }
+
+
+      // Step 3: Use the sendTransaction function from useWallet
+      const signature = await sendTransaction(
+        transaction, // Pass the fully constructed Transaction object
+        connection
+      );
+
+      if (!signature) {
+        throw new Error('Transaction was not signed or failed to send (no signature returned).');
+      }
+
+      console.log('Transaction sent successfully! Signature:', signature);
+      Alert.alert(
+        'Transaction Submitted',
+        `Signature: ${signature.substring(0, 10)}...`,
+        [{ text: 'OK' }]
+      );
+
+      // Reset UI state on success
+      setModalVisible(false); // Close the modal
+      refreshData(); // Refresh wallet data (balances, transactions)
+      setSendAmount(''); // Clear the amount
+      setRecipient(''); // Clear the recipient address
+      // setSelectedToken(null); // Optionally clear selected token
+
+    } catch (e: any) {
+      console.error('Error during send action:', e);
+      let detailedError = e.message || 'An unexpected error occurred during the send process.';
+      
+      // Attempt to get more detailed logs if it's a SendTransactionError
+      if (e.logs && Array.isArray(e.logs)) {
+        const logsMessage = "\nSimulation Logs:\n" + e.logs.join('\n');
+        console.error(logsMessage); // Log detailed logs to console
+        detailedError += logsMessage;
+      } else if (typeof e.getLogs === 'function') { // Some wallet adapters might have a getLogs method
+        try {
+          const logs = e.getLogs();
+          if (logs && Array.isArray(logs)) {
+            const logsMessage = "\nSimulation Logs:\n" + logs.join('\n');
+            console.error(logsMessage);
+            detailedError += logsMessage;
+          }
+        } catch (logError) {
+          console.error('Failed to get logs from error object:', logError);
+        }
+      }
+
+      setSendError(detailedError);
+    } finally {
+      setIsSubmitting(false); // Ensure isSubmitting is reset in all cases
+    }
+  };
+
+  const SOL_MINT_ADDRESS = 'So11111111111111111111111111111111111111112';
+  const SOL_IMAGE_URL = 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'; // Example SOL image
+
+  const displayTokens = useMemo(() => {
+    if (!assets) return [];
+
+    const splTokens = assets.tokens || [];
+    let nativeSolPrice = 0;
+    let nativeSolUsdValue = 0;
+
+    // Attempt to get SOL price information if available (this part might need adjustment based on actual structure)
+    // This assumes that if assets.nativePrice and assets.nativeUsdValue are available they will be used.
+    // This might require a modification in useWalletData or api.ts to expose SOL's specific price.
+    // For now, we look for a token with SOL's mint address in the priced tokens if the backend includes it there.
+    // Or, we might need to access a specific field on the `assets` object itself if `useWalletData` is updated.
+
+    // A more robust way would be if `assets` object itself carried `nativePrice` and `nativeUsdValue`
+    // For demonstration, let's assume it might be part of the `tokens` if priced, or we use placeholders.
+    const solTokenInfoFromList = splTokens.find(t => t.mint === SOL_MINT_ADDRESS);
+    if (solTokenInfoFromList) {
+        nativeSolPrice = solTokenInfoFromList.price;
+        nativeSolUsdValue = solTokenInfoFromList.usdValue;
+    } else if (assets.hasOwnProperty('nativePrice') && assets.hasOwnProperty('nativeUsdValue')) {
+        // This is a hypothetical scenario where useWalletData is modified to add these
+        // nativeSolPrice = (assets as any).nativePrice;
+        // nativeSolUsdValue = (assets as any).nativeUsdValue;
+        // console.log("Using direct nativePrice/nativeUsdValue from assets object if they existed.");
+    }
+
+    const solAsset: WalletAsset = {
+      mint: SOL_MINT_ADDRESS,
+      name: 'Solana',
+      symbol: 'SOL',
+      balance: assets.nativeBalance || '0',
+      decimals: 9,
+      price: nativeSolPrice, // Placeholder or derived
+      usdValue: nativeSolUsdValue, // Placeholder or derived
+      change24h: 0, // Placeholder
+      image: SOL_IMAGE_URL,
+      type: 'token',
+    };
+
+    // Filter out SOL from splTokens if it was accidentally included by backend in tokens list
+    const filteredSplTokens = splTokens.filter(token => token.mint !== SOL_MINT_ADDRESS);
+
+    return [solAsset, ...filteredSplTokens];
+  }, [assets]);
 
   if (loading && !assets) {
     return (
@@ -91,9 +361,6 @@ const DashboardScreen: React.FC = () => {
     );
   }
 
-  // FlatList data: tokens array, TokenList will be rendered as part of ListHeaderComponent
-  const tokens = assets?.tokens || [];
-
   return (
     <ImageBackground source={require('../assets/images/new_dashboard_bg.png')} style={styles.container} resizeMode="cover">
       <View style={styles.overlay}>
@@ -104,11 +371,12 @@ const DashboardScreen: React.FC = () => {
           ListHeaderComponent={
             <>
               <NetWorthCard totalValue={assets?.totalUsdValue || 0} />
-              <HoldingsCard assets={tokens} totalUsdValue={assets?.totalUsdValue || 0} />
+              <HoldingsCard assets={displayTokens} totalUsdValue={assets?.totalUsdValue || 0} />
               <View style={{ marginTop: 8 }}>
                 <TokenList 
-                  tokens={tokens} 
+                  tokens={displayTokens} 
                   onTokenPress={token => { 
+                    console.log('[TokenList onTokenPress] Token:', token);
                     setSelectedToken(token); 
                     setTokenModalVisible(true); 
                   }} 
@@ -154,28 +422,35 @@ const DashboardScreen: React.FC = () => {
                 <TouchableOpacity style={[modalStyles.tab, activeTab === 'send' && modalStyles.activeTab]} onPress={() => setActiveTab('send')}><Text style={modalStyles.tabText}>Send</Text></TouchableOpacity>
                 <TouchableOpacity style={[modalStyles.tab, activeTab === 'receive' && modalStyles.activeTab]} onPress={() => setActiveTab('receive')}><Text style={modalStyles.tabText}>Receive</Text></TouchableOpacity>
               </View>
+              <TouchableOpacity style={modalStyles.closeButton} onPress={() => setModalVisible(false)}>
+                <Text style={{fontSize: 24, color: '#fff'}}>×</Text>
+              </TouchableOpacity>
+
               {activeTab === 'send' ? (
                 <>
-                  <Text style={modalStyles.sendLabel}>SEND {selectedToken?.symbol}</Text>
-                  <Text style={modalStyles.sendAmount}>{sendAmount || '0'}</Text>
-                  <Text style={modalStyles.sendUsd}>
-                    ${((parseFloat(sendAmount) || 0) * (selectedToken?.price ?? 0)).toFixed(2)}
-                  </Text>
-                  {/* Token Card */}
-                  <View style={modalStyles.tokenCard}>
+                  <TouchableOpacity 
+                    onPress={() => { 
+                      console.log('[Send Modal Token Card] Pressed.'); 
+                      setTokenModalVisible(true); 
+                    }}
+                    style={modalStyles.tokenCard}
+                  >
                     <View style={modalStyles.tokenIconCircle}>
-                      <Text style={{ fontSize: 22 }}>🟦</Text>
+                      {selectedToken?.image ? 
+                        <Image source={{ uri: selectedToken.image }} style={{width: 22, height: 22, borderRadius: 11}} /> : 
+                        <Text style={{ fontSize: 22 }}>💰</Text>
+                      }
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={modalStyles.tokenName}>
-                        {selectedToken?.name} <Text style={{ fontSize: 18 }}>›</Text>
+                        {selectedToken?.name || 'Select Token'} <Text style={{ fontSize: 18 }}>›</Text>
                       </Text>
                       <Text style={modalStyles.tokenBalance}>
-                        {selectedToken?.balance} {selectedToken?.symbol}
+                        Balance: {selectedToken?.balance || '0'} {selectedToken?.symbol || ''}
                       </Text>
                     </View>
-                  </View>
-                  {/* Recipient Input */}
+                  </TouchableOpacity>
+
                   <View style={modalStyles.recipientRow}>
                     <Text style={modalStyles.recipientLabel}>To:</Text>
                     <TextInput
@@ -185,41 +460,97 @@ const DashboardScreen: React.FC = () => {
                       value={recipient}
                       onChangeText={setRecipient}
                     />
-                    <TouchableOpacity style={modalStyles.pasteButton} onPress={() => Clipboard.getStringAsync().then(setRecipient)}>
+                    <TouchableOpacity 
+                      style={modalStyles.pasteButton} 
+                      onPress={() => Clipboard.getStringAsync().then(setRecipient)}
+                    >
                       <Text style={modalStyles.pasteText}>Paste</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={modalStyles.iconButton}><Text style={{ fontSize: 18 }}>🔗</Text></TouchableOpacity>
                     <TouchableOpacity style={modalStyles.iconButton}><Text style={{ fontSize: 18 }}>@</Text></TouchableOpacity>
                   </View>
-                  {/* Enter Amount Button */}
-                  <TouchableOpacity style={modalStyles.enterAmountButton} disabled={true}>
-                    <Text style={modalStyles.enterAmountText}>Enter amount</Text>
+
+                  <View style={modalStyles.amountContainer}> 
+                    <Text style={modalStyles.sendLabel}>Amount:</Text>
+                    <Text style={modalStyles.sendAmount}>{sendAmount || '0'}</Text>
+                    {selectedToken && typeof selectedToken.price === 'number' && ( 
+                      <Text style={modalStyles.sendUsd}>
+                        {'≈ $' + (parseFloat(sendAmount || '0') * selectedToken.price).toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                  
+                  <View style={modalStyles.keypadContainer}>
+                    <View style={modalStyles.keypadRow}>
+                      <TouchableOpacity
+                        style={modalStyles.keypadAction}
+                        onPress={() => handleKeypad('MAX')}
+                        disabled={!selectedToken}
+                      >
+                        <Text style={modalStyles.keypadActionText}>MAX</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={modalStyles.keypadNum}
+                        onPress={() => handleKeypad('1')}
+                        disabled={!selectedToken}
+                      >
+                        <Text style={modalStyles.keypadNumText}>1</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={modalStyles.keypadNum}
+                        onPress={() => handleKeypad('2')}
+                        disabled={!selectedToken}
+                      >
+                        <Text style={modalStyles.keypadNumText}>2</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={modalStyles.keypadNum}
+                        onPress={() => handleKeypad('3')}
+                        disabled={!selectedToken}
+                      >
+                        <Text style={modalStyles.keypadNumText}>3</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={modalStyles.keypadRow}>
+                      <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('75%')} disabled={!selectedToken}><Text style={modalStyles.keypadActionText}>75%</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('4')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>4</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('5')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>5</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('6')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>6</Text></TouchableOpacity>
+                    </View>
+                    <View style={modalStyles.keypadRow}>
+                      <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('50%')} disabled={!selectedToken}><Text style={modalStyles.keypadActionText}>50%</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('7')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>7</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('8')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>8</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('9')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>9</Text></TouchableOpacity>
+                    </View>
+                    <View style={modalStyles.keypadRow}>
+                      <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('CLEAR')} disabled={!selectedToken}><Text style={[modalStyles.keypadActionText, { opacity: 0.5 }]}>CLEAR</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('.')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>.</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('0')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>0</Text></TouchableOpacity>
+                      <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('DEL')} disabled={!selectedToken}><Text style={modalStyles.keypadNumText}>⌫</Text></TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      modalStyles.sendButton,
+                      (!recipient || !sendAmount || !selectedToken || isSubmitting) && modalStyles.sendButtonDisabled
+                    ]}
+                    onPress={handleSendAction}
+                    disabled={!recipient || !sendAmount || !selectedToken || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={modalStyles.sendButtonText}>Send</Text>
+                    )}
                   </TouchableOpacity>
-                  {/* Keypad */}
-                  <View style={modalStyles.keypadRow}>
-                    <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('MAX')}><Text style={modalStyles.keypadActionText}>MAX</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('1')}><Text style={modalStyles.keypadNumText}>1</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('2')}><Text style={modalStyles.keypadNumText}>2</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('3')}><Text style={modalStyles.keypadNumText}>3</Text></TouchableOpacity>
-                  </View>
-                  <View style={modalStyles.keypadRow}>
-                    <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('75%')}><Text style={modalStyles.keypadActionText}>75%</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('4')}><Text style={modalStyles.keypadNumText}>4</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('5')}><Text style={modalStyles.keypadNumText}>5</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('6')}><Text style={modalStyles.keypadNumText}>6</Text></TouchableOpacity>
-                  </View>
-                  <View style={modalStyles.keypadRow}>
-                    <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('50%')}><Text style={modalStyles.keypadActionText}>50%</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('7')}><Text style={modalStyles.keypadNumText}>7</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('8')}><Text style={modalStyles.keypadNumText}>8</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('9')}><Text style={modalStyles.keypadNumText}>9</Text></TouchableOpacity>
-                  </View>
-                  <View style={modalStyles.keypadRow}>
-                    <TouchableOpacity style={modalStyles.keypadAction} onPress={() => handleKeypad('CLEAR')}><Text style={[modalStyles.keypadActionText, { opacity: 0.5 }]}>CLEAR</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('.')}><Text style={modalStyles.keypadNumText}>.</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('0')}><Text style={modalStyles.keypadNumText}>0</Text></TouchableOpacity>
-                    <TouchableOpacity style={modalStyles.keypadNum} onPress={() => handleKeypad('DEL')}><Text style={modalStyles.keypadNumText}>⌫</Text></TouchableOpacity>
-                  </View>
+
+                  {sendError && (
+                    <View style={modalStyles.errorContainer}>
+                      <Text style={modalStyles.errorText}>{sendError}</Text>
+                    </View>
+                  )}
                 </>
               ) : (
                 <>
@@ -239,9 +570,6 @@ const DashboardScreen: React.FC = () => {
                   </View>
                 </>
               )}
-              <TouchableOpacity style={modalStyles.closeButton} onPress={() => setModalVisible(false)}>
-                <Text style={{fontSize: 24, color: '#fff'}}>×</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -254,7 +582,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(16, 20, 26, 0.85)', // Optional: dark overlay for readability
+    backgroundColor: 'rgba(16, 20, 26, 0.85)',
   },
   centerContent: {
     justifyContent: 'center',
@@ -313,160 +641,77 @@ const modalStyles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  addressLabel: {
-    marginTop: 18,
-    color: '#aaa',
-    fontSize: 14,
-  },
-  address: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-    marginVertical: 8,
-  },
-  warning: {
-    color: '#aaa',
-    fontSize: 12,
-    textAlign: 'center',
-    marginVertical: 8,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    marginTop: 16,
-    width: '100%',
-    justifyContent: 'space-between',
-  },
-  actionButton: {
-    flex: 1,
-    marginHorizontal: 8,
-    backgroundColor: '#232B36',
-    borderRadius: 10,
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: 8,
-  },
-  sendLabel: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  sendAmount: {
-    color: '#fff',
-    fontSize: 36,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  sendUsd: {
-    color: '#aaa',
-    fontSize: 14,
-  },
-  tokenCard: {
-    backgroundColor: '#181F29',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tokenIconCircle: {
-    backgroundColor: '#232B36',
-    borderRadius: 16,
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  tokenName: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  tokenBalance: {
-    color: '#aaa',
-    fontSize: 14,
-  },
-  recipientRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  recipientLabel: {
-    color: '#aaa',
-    fontSize: 14,
-    marginRight: 8,
-  },
-  recipientInput: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#181F29',
-    borderRadius: 10,
-    color: '#fff',
-  },
-  pasteButton: {
-    padding: 8,
-    backgroundColor: '#232B36',
-    borderRadius: 10,
-    marginLeft: 8,
-  },
-  pasteText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  iconButton: {
-    padding: 8,
-  },
-  enterAmountButton: {
-    backgroundColor: '#232B36',
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 16,
-  },
-  enterAmountText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  keypadRow: {
-    flexDirection: 'row',
-    marginTop: 8,
-    marginBottom: 8,
-  },
+  addressLabel: { marginTop: 18, color: '#aaa', fontSize: 14 },
+  address: { color: '#fff', fontSize: 16, textAlign: 'center', marginVertical: 8 },
+  warning: { color: '#aaa', fontSize: 12, textAlign: 'center', marginVertical: 8 },
+  buttonRow: { flexDirection: 'row', marginTop: 16, width: '100%', justifyContent: 'space-between' },
+  actionButton: { flex: 1, marginHorizontal: 8, backgroundColor: '#232B36', borderRadius: 10, alignItems: 'center', paddingVertical: 12 },
+  actionButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  closeButton: { position: 'absolute', top: 12, right: 12, padding: 8 },
+  
+  sendLabel: { color: '#fff', fontSize: 18, fontWeight: '600', marginBottom: 8 },
+  sendAmount: { color: '#fff', fontSize: 36, fontWeight: '600', marginBottom: 8 },
+  sendUsd: { color: '#aaa', fontSize: 14 },
+  tokenCard: { backgroundColor: '#181F29', borderRadius: 12, padding: 16, marginBottom: 24, flexDirection: 'row', alignItems: 'center', width: '100%' },
+  tokenIconCircle: { backgroundColor: '#232B36', borderRadius: 16, width: 32, height: 32, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  tokenName: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  tokenBalance: { color: '#aaa', fontSize: 14 },
+  recipientRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, width: '100%' },
+  recipientLabel: { color: '#aaa', fontSize: 14, marginRight: 8 },
+  recipientInput: { flex: 1, padding: 12, backgroundColor: '#181F29', borderRadius: 10, color: '#fff' },
+  pasteButton: { padding: 8, backgroundColor: '#232B36', borderRadius: 10, marginLeft: 8 },
+  pasteText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  iconButton: { padding: 8 },
+  amountContainer: { alignItems: 'center', marginVertical: 16 },
+  
+  keypadContainer: { marginTop: 16, width: '100%' },
+  keypadRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   keypadAction: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#232B36',
-    borderRadius: 10,
-    marginHorizontal: 4,
+    flex: 1, padding: 12, backgroundColor: '#232B36', borderRadius: 10, marginHorizontal: 4, alignItems: 'center'
   },
   keypadActionText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 16,
+    textAlign: 'center',
   },
   keypadNum: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#181F29',
-    borderRadius: 10,
-    marginHorizontal: 4,
+    flex: 1, padding: 12, backgroundColor: '#181F29', borderRadius: 10, marginHorizontal: 4, alignItems: 'center'
   },
   keypadNumText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 20,
+    textAlign: 'center',
+  },
+
+  sendButton: {
+    backgroundColor: COLORS.brandPrimary,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginTop: 24,
+    width: '100%',
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  sendButtonText: {
+    color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  errorContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#232B36',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: COLORS.error,
+    fontSize: 14,
   },
 });
 

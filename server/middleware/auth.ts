@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '../../node_modules/.prisma/client'; // Adjusted path
+import { PrismaClient } from '@prisma/client';
 import { PrivyClient, AuthTokenClaims } from '@privy-io/server-auth';
 
 // Define types for Privy response
