@@ -79,6 +79,92 @@ interface ApiAssetDetails {
   }
 }
 
+// Map of known mint addresses to symbols
+const MINT_SYMBOLS: Record<string, string> = {
+  'So11111111111111111111111111111111111111112': 'SOL',
+  'SENDdRQtYMWaQrBroBrJ2Q53fgVuq95CV9UPGEvpCxa': 'SEND',
+  // Add more known tokens here as needed
+};
+
+function transformSolanaTxToTransaction(rawTx: any, userAddress: string): Transaction {
+  const signature = rawTx.signature;
+  const timestamp = rawTx.timestamp;
+  let type: 'send' | 'receive' = 'send';
+  let symbol = 'SOL';
+  let amount = '0';
+  let from = '';
+  let to = '';
+  let decimals = 9; // Default for SOL
+
+  // SPL Token receive detection (most robust)
+  if (rawTx.meta?.postTokenBalances?.length) {
+    for (const post of rawTx.meta.postTokenBalances) {
+      if (post.owner === userAddress) {
+        const mint = post.mint;
+        symbol = MINT_SYMBOLS[mint] || 'TOKEN';
+        decimals = post.uiTokenAmount.decimals ?? 6;
+        const pre = rawTx.meta?.preTokenBalances?.find(
+          (b: any) => b.owner === userAddress && b.mint === mint
+        );
+        const postAmount = Number(post.uiTokenAmount.uiAmountString);
+        const preAmount = pre ? Number(pre.uiTokenAmount.uiAmountString) : 0;
+        const received = postAmount - preAmount;
+        if (received > 0) {
+          type = 'receive';
+          amount = received.toString();
+          from = '';
+          to = userAddress;
+          break;
+        }
+      }
+    }
+  }
+
+  // If not a receive, fallback to instruction-based logic (for send or SOL)
+  if (amount === '0') {
+    const instructions = rawTx.transaction?.message?.instructions || [];
+    let transferIx = instructions.find(
+      (ix: any) =>
+        (ix?.parsed?.type === 'transfer' || ix?.parsed?.type === 'transferChecked')
+    );
+    if (transferIx && transferIx.parsed.info.mint) {
+      const info = transferIx.parsed.info;
+      const mint = info.mint;
+      from = info.authority || info.source || '';
+      to = info.destination || info.account || '';
+      decimals = info.decimals ?? 6;
+      symbol = MINT_SYMBOLS[mint] || 'TOKEN';
+      const parsedAmount = Number(info.amount);
+      amount = !isNaN(parsedAmount) ? (parsedAmount / Math.pow(10, decimals)).toString() : '0';
+      if (from === userAddress) {
+        type = 'send';
+      }
+    } else if (transferIx && transferIx.parsed.info.lamports) {
+      const info = transferIx.parsed.info;
+      from = info.source;
+      to = info.destination;
+      const parsedLamports = Number(info.lamports);
+      amount = !isNaN(parsedLamports) ? (parsedLamports / 1e9).toString() : '0';
+      symbol = 'SOL';
+      decimals = 9;
+      if (from === userAddress) type = 'send';
+      else if (to === userAddress) type = 'receive';
+    }
+  }
+
+  return {
+    hash: signature,
+    timestamp: timestamp ? new Date(timestamp * 1000).toISOString() : '',
+    type,
+    amount,
+    symbol,
+    usdValue: 0,
+    status: rawTx.meta?.err ? 'failed' : 'confirmed',
+    from,
+    to,
+  };
+}
+
 class ApiService {
   private baseUrl: string;
 
@@ -185,7 +271,10 @@ class ApiService {
   }
 
   async getWalletTransactions(address: string): Promise<Transaction[]> {
-    return this.fetchWithAuth(`/wallet/${address}/transactions`);
+    const rawTxs = await this.fetchWithAuth(`/wallet/${address}/transactions`);
+    return Array.isArray(rawTxs?.transactions)
+      ? rawTxs.transactions.map((tx: any) => transformSolanaTxToTransaction(tx, address))
+      : [];
   }
 
   async getAssetDetails(address: string, assetId: string): Promise<WalletAsset> {

@@ -21,7 +21,10 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({
           {tx.type === 'send' ? 'Sent' : 'Received'} {tx.symbol}
         </Text>
         <Text style={styles.transactionDate}>
-          {new Date(tx.timestamp).toLocaleDateString()}
+          {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+        </Text>
+        <Text style={styles.transactionTo}>
+          To: {tx.to ? tx.to.slice(0, 5) + '...' + tx.to.slice(-4) : '-'}
         </Text>
       </View>
       <View style={styles.transactionAmount}>
@@ -29,7 +32,7 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({
           styles.amount,
           tx.type === 'send' ? styles.sentAmount : styles.receivedAmount
         ]}>
-          {tx.type === 'send' ? '-' : '+'}{tx.amount} {tx.symbol}
+          {tx.type === 'send' ? '-' : '+'}{parseFloat(tx.amount)} {tx.symbol}
         </Text>
         <Text style={styles.usdValue}>
           ${tx.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -146,6 +149,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 32,
     fontSize: 16,
+  },
+  transactionTo: {
+    color: COLORS.greyLight,
+    fontSize: 13,
+    marginTop: 2,
   },
 });
 

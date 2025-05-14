@@ -5,6 +5,7 @@ import { RootState } from '../state/store';
 import MainTabs from './MainTabs';
 import LoginScreen from '../screens/LoginScreen/LoginScreen';
 import ChatScreen from '@/screens/ChatScreen';
+import TransactionDetailsScreen from '../screens/TransactionDetailsScreen';
 
 export type RootStackParamList = {
   LoginScreen: undefined;
@@ -12,6 +13,7 @@ export type RootStackParamList = {
   Chat: { id?: string; title?: string };
   ChatHistory: undefined;
   Profile: undefined;
+  TransactionDetails: { transaction: any; userAddress: string };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -33,6 +35,10 @@ export default function RootNavigator() {
           <Stack.Screen 
             name="Chat" 
             component={ChatScreen}
+          />
+          <Stack.Screen 
+            name="TransactionDetails" 
+            component={TransactionDetailsScreen}
           />
         </>
       ) : (
