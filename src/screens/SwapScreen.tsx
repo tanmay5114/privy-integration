@@ -8,15 +8,12 @@ import AppHeader from '../components/AppHeader';
 import WalletDrawer from '../components/WalletDrawer';
 import { JupiterService } from '../../server/services/jupiterService';
 
-// Placeholder for wallet address - replace with actual wallet integration
-const USER_WALLET_ADDRESS = 'AAc4f6pbyoa82cDvq1iUbipANtuzkL1HXJXH3ikcEXyg'; // Updated placeholder for testing, TODO: Make this dynamic
-
 const SwapScreen: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
   
   // Privy Solana Wallets
-  const { wallet, connected , signTransaction} = useWallet();
+  const { wallet, connected , signTransaction , address} = useWallet();
 
   // State for tokens
   const [availableTokens, setAvailableTokens] = useState<any[]>([]);
@@ -36,7 +33,7 @@ const SwapScreen: React.FC = () => {
       setIsTokenListLoading(true);
       setTokenListError(null);
       // Check if the wallet address is a valid one before fetching
-      if (!USER_WALLET_ADDRESS || USER_WALLET_ADDRESS.length < 32) { // Removed redundant check
+      if (!address || address.length < 32) { // Removed redundant check
         setTokenListError("Wallet address not set or invalid. Please connect wallet or update placeholder.");
         setIsTokenListLoading(false);
         setInputToken(null);
@@ -45,7 +42,7 @@ const SwapScreen: React.FC = () => {
         return;
       }
       try {
-        const tokens = await JupiterService.getAvailableTokens(USER_WALLET_ADDRESS);
+        const tokens = await JupiterService.getAvailableTokens(address!);
         console.log('Raw tokens response from API:', JSON.stringify(tokens, null, 2)); // Log raw response
         setAvailableTokens(tokens);
         
@@ -174,7 +171,7 @@ const SwapScreen: React.FC = () => {
         inputMint,
         outputMint,
         amountInSmallestUnit, // Send amount in smallest unit
-        USER_WALLET_ADDRESS
+        address!
       );
       console.log('Jupiter Service Swap Order:', order);
       setSwapQuote(order);
@@ -205,10 +202,10 @@ const SwapScreen: React.FC = () => {
       const unsignedTransactionBase64 = swapQuote.order.transaction;
 
       // 2. Deserialize the base64 transaction string into a Solana Transaction object
-      let transaction: Transaction;
+      let transaction: VersionedTransaction;
       try {
         const transactionBuffer = Buffer.from(unsignedTransactionBase64, 'base64');
-        transaction = Transaction.from(transactionBuffer);
+        transaction = VersionedTransaction.deserialize(transactionBuffer);
       } catch (e: any) {
         console.error("Failed to deserialize transaction:", e);
         setError(`Failed to prepare transaction for signing: ${e.message}`);
@@ -232,7 +229,7 @@ const SwapScreen: React.FC = () => {
       try {
         // For Jupiter, often requireAllSignatures can be false as Jupiter might co-sign or handle fee payment.
         // If your backend expects the transaction to be fully signed by the user as the sole/final signer, set to true.
-        const serializedSignedTx = signedTxObject.serialize({ requireAllSignatures: false });
+        const serializedSignedTx = signedTxObject.serialize();
         signedTransactionBase64 = Buffer.from(serializedSignedTx).toString('base64');
       } catch (e: any) {
         console.error("Failed to serialize signed transaction:", e);
@@ -240,7 +237,6 @@ const SwapScreen: React.FC = () => {
         setIsLoading(false);
         return;
       }
-      // --- Wallet Integration Point: End ---
 
       if (!signedTransactionBase64) {
         setError("Transaction signing was cancelled or failed.");

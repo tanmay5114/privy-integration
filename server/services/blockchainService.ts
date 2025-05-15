@@ -7,7 +7,7 @@ dotenv.config();
 
 const RPC_URL = process.env.RPC_URL;
 const JUPITER_API_URL_GET_ORDER = process.env.JUPITER_API_URL_GET_ORDER;
-const JUPITER_API_URL_EXECUTE = process.env.JUPITER_API_URL_EXECUTE;
+const JUPITER_API_URL_EXECUTE = process.env.JUPITER_API_URL_EXECUTE_ORDER;
 const COINGECKO_API_URL = process.env.COINGECKO_API_URL;
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
 const BIRDEYE_API_URL = process.env.BIRDEYE_API_URL || 'https://public-api.birdeye.so/v1';
