@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Privy SAK React Native",
-    "slug": "privy-sak-react-native",
-    "scheme": "privysakreactnative",
+    "name": "Sendai Mobile",
+    "slug": "sendai-mobile",
+    "scheme": "sendaimobile",
     "version": "0.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
       "**/*"
     ],
     "android": {
-      "package": "com.bhu1tyagi.privysakreactnative",
+      "package": "com.sendai.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       },
@@ -19,15 +19,12 @@
       ]
     },
     "ios": {
-      "bundleIdentifier": "com.bhu1tyagi.privysakreactnative",
+      "bundleIdentifier": "com.sendai.mobile",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We need access to your photos to let you pick images."
       },
       "appleTeamId": "YY25LDG49N"
     },
-    "newArchEnabled": false,
-    "plugins": [
-      "expo-secure-store"
-    ]
+    "newArchEnabled": false
   }
 }

@@ -23,7 +23,7 @@ const DashboardScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<'send' | 'receive'>('send');
   const [historyVisible, setHistoryVisible] = useState(false);
-  const { address: walletAddress, sendTransaction } = useWallet();
+  const { address: walletAddress, ...privyWalletObject } = useWallet();
   const { assets, transactions, loading, error, refreshData, getAssetDetails } = useWalletData();
 
   // Send screen state
@@ -32,6 +32,7 @@ const DashboardScreen: React.FC = () => {
 
   const [tokenModalVisible, setTokenModalVisible] = useState(false);
   const [selectedToken, setSelectedToken] = useState<WalletAsset | null>(null);
+  const [showTokenPickerForSend, setShowTokenPickerForSend] = useState(false);
 
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
 
@@ -44,6 +45,16 @@ const DashboardScreen: React.FC = () => {
     console.log('[handleSend] Called. Current modalVisible state:', modalVisible);
     setActiveTab('send');
     setSendError(null); // Clear previous errors when opening modal
+
+    // Default token selection logic
+    if (!selectedToken && displayTokens.length > 0) {
+      const defaultToken = displayTokens.find(t => t.mint === SOL_MINT_ADDRESS) || displayTokens[0];
+      if (defaultToken) {
+        setSelectedToken(defaultToken);
+        // setSendAmount(''); // Don't reset amount here, might be reopening
+        console.log('[handleSend] Default token set:', defaultToken.symbol);
+      }
+    }
     setModalVisible(true);
     console.log('[handleSend] setModalVisible(true) called. New modalVisible state should reflect soon.');
   };
@@ -98,20 +109,22 @@ const DashboardScreen: React.FC = () => {
       setSendError('Missing required fields for transfer.');
       return null;
     }
-    // Clear previous error when attempting to fetch again
     setSendError(null);
-    setIsSubmitting(true); // Set submitting true while fetching instructions
+    setIsSubmitting(true);
 
     try {
       const apiBaseUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
       const apiUrl = `${apiBaseUrl}/api/wallet/${walletAddress}/transfer/instructions`;
+      
+      // Corrected: Use selectedToken.type to determine if it's native SOL
+      const payloadTokenMint = selectedToken.type === 'native' ? undefined : selectedToken.mint;
       
       console.log('Fetching transfer instructions with:', {
         apiUrl,
         walletAddress,
         recipient,
         amount: parseFloat(sendAmount),
-        tokenMint: selectedToken.mint === 'native' ? undefined : selectedToken.mint,
+        tokenMint: payloadTokenMint, 
       });
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -119,7 +132,7 @@ const DashboardScreen: React.FC = () => {
         body: JSON.stringify({
           toAddress: recipient,
           amount: parseFloat(sendAmount),
-          tokenMint: selectedToken.mint === 'native' ? undefined : selectedToken.mint,
+          tokenMint: payloadTokenMint,
         }),
       });
 
@@ -159,36 +172,38 @@ const DashboardScreen: React.FC = () => {
       return;
     }
 
-    if (!sendTransaction) {
-      setSendError('Wallet send function is not available. Is your wallet connected and configured?');
-      console.error('sendTransaction from useWallet is undefined.');
+    // Restored: Access Privy wallet instance correctly
+    let privyWalletToUse = null;
+    if (privyWalletObject && typeof privyWalletObject.signTransaction === 'function') {
+      privyWalletToUse = privyWalletObject;
+    } else if (privyWalletObject && (privyWalletObject as any).wallet && typeof (privyWalletObject as any).wallet.signTransaction === 'function') {
+      privyWalletToUse = (privyWalletObject as any).wallet;
+    } else if (privyWalletObject && (privyWalletObject as any).signTransaction) { // Added for cases where it might be directly on a different property
+        privyWalletToUse = (privyWalletObject as any);
+    }
+
+    if (!privyWalletToUse) {
+      setSendError('Wallet is not available or does not support signing. Is your wallet connected and configured?');
+      console.error('Privy wallet or signTransaction method from useWallet is undefined or not ready.', privyWalletObject);
       return;
     }
 
     setIsSubmitting(true); 
 
     try {
-      // Step 1: Get transfer instructions from your backend
       const instructionData = await getTransferInstructions(); 
 
       if (!instructionData || !instructionData.instructions || instructionData.instructions.length === 0) {
-        if (!sendError) { // If getTransferInstructions didn't set a specific error
+        if (!sendError) { 
           setSendError('Failed to retrieve valid transfer instructions from the server.');
         }
         setIsSubmitting(false);
         return;
       }
 
-      console.log('Received instructionData from backend:', JSON.stringify(instructionData, null, 2));
-      console.log('Raw instructions from backend:', instructionData.instructions);
-
-
-      // Step 2: Create a Connection object
       const rpcUrl = process.env.REACT_APP_RPC_URL || 'https://api.mainnet-beta.solana.com';
-      console.log(`Using RPC URL: ${rpcUrl}`);
-      const connection = new Connection(rpcUrl, 'confirmed');
+      const connection = new Connection(rpcUrl, 'confirmed'); 
 
-      // Step 2a: Map plain instruction objects to TransactionInstruction instances
       const mappedInstructions = instructionData.instructions.map((instr: any) => {
         if (!instr.programId || !instr.keys || !instr.data) {
           throw new Error('Invalid instruction structure from backend.');
@@ -203,68 +218,69 @@ const DashboardScreen: React.FC = () => {
           data: Buffer.from(instr.data, 'base64'),
         });
       });
-      console.log('Mapped TransactionInstructions:', mappedInstructions);
 
-      // Step 2b: Create a new Transaction
       const transaction = new Transaction();
       transaction.add(...mappedInstructions);
 
-      // Step 2c: Set feePayer
       if (instructionData.feePayer) {
         transaction.feePayer = new PublicKey(instructionData.feePayer);
-        console.log('Using feePayer from backend:', instructionData.feePayer);
       } else if (walletAddress) {
         transaction.feePayer = new PublicKey(walletAddress);
-        console.log('Using current walletAddress as feePayer:', walletAddress);
       } else {
         setSendError('Fee payer (wallet address) is not available.');
         setIsSubmitting(false);
         return;
       }
 
-      // Step 2d: Set recentBlockhash
       if (instructionData.recentBlockhash) {
         transaction.recentBlockhash = instructionData.recentBlockhash;
-        console.log('Using recentBlockhash from backend:', instructionData.recentBlockhash);
       } else {
-        console.log('Fetching latest blockhash as it was not provided by backend...');
         const { blockhash } = await connection.getLatestBlockhash('confirmed');
         transaction.recentBlockhash = blockhash;
-        console.log('Fetched latest blockhash:', blockhash);
       }
       
-      console.log('Constructed transaction object:', transaction);
-      if (!transaction.recentBlockhash) {
-        throw new Error("Transaction recentBlockhash is missing before sending.");
-      }
-      if (!transaction.feePayer) {
-        throw new Error("Transaction feePayer is missing before sending.");
+      if (!transaction.recentBlockhash || !transaction.feePayer) {
+        throw new Error("Transaction recentBlockhash or feePayer is missing before signing.");
       }
 
+      // Restored: Sign transaction with Privy
+      console.log('Attempting to sign transaction with Privy wallet:', privyWalletToUse);
+      const signedTransaction = await privyWalletToUse.signTransaction(transaction);
+      console.log('Transaction signed by Privy wallet:', signedTransaction);
+      console.log('Signatures on signedTransaction object:', signedTransaction.signatures); // <--- ADD THIS LOG
+      
 
-      // Step 3: Use the sendTransaction function from useWallet
-      const signature = await sendTransaction(
-        transaction, // Pass the fully constructed Transaction object
-        connection
-      );
+      // Restored: Serialize and send to backend
+      // Simplify serialization: if Privy returns a fully signed Transaction object,
+      // a direct .serialize() should produce the wire format.
+      const wireTransaction = signedTransaction.serialize();
+      const serializedSignedTransaction = Buffer.from(wireTransaction).toString('base64');
+      
+      console.log('Serialized signed transaction (no options):', serializedSignedTransaction.substring(0, 50) + "...");
 
-      if (!signature) {
-        throw new Error('Transaction was not signed or failed to send (no signature returned).');
+      const apiBaseUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+      const submitApiUrl = `${apiBaseUrl}/api/transaction/submit`;
+
+      const submitResponse = await fetch(submitApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signedTransaction: serializedSignedTransaction }),
+      });
+
+      const submitResponseBody = await submitResponse.text();
+      if (!submitResponse.ok) {
+        let errorData;
+        try { errorData = JSON.parse(submitResponseBody); } catch (e) { errorData = { message: `Server responded with ${submitResponse.status}: ${submitResponseBody}` }; }
+        throw new Error(errorData.message || `Failed to submit transaction. Status: ${submitResponse.status}`);
       }
+      
+      const submitData = JSON.parse(submitResponseBody);
+      Alert.alert('Transaction Submitted', `Signature: ${(submitData.signature || 'N/A').substring(0, 10)}...`, [{ text: 'OK' }]);
 
-      console.log('Transaction sent successfully! Signature:', signature);
-      Alert.alert(
-        'Transaction Submitted',
-        `Signature: ${signature.substring(0, 10)}...`,
-        [{ text: 'OK' }]
-      );
-
-      // Reset UI state on success
-      setModalVisible(false); // Close the modal
-      refreshData(); // Refresh wallet data (balances, transactions)
-      setSendAmount(''); // Clear the amount
-      setRecipient(''); // Clear the recipient address
-      // setSelectedToken(null); // Optionally clear selected token
+      setModalVisible(false); 
+      refreshData(); 
+      setSendAmount(''); 
+      setRecipient(''); 
 
     } catch (e: any) {
       console.error('Error during send action:', e);
@@ -329,11 +345,11 @@ const DashboardScreen: React.FC = () => {
       symbol: 'SOL',
       balance: assets.nativeBalance || '0',
       decimals: 9,
-      price: nativeSolPrice, // Placeholder or derived
-      usdValue: nativeSolUsdValue, // Placeholder or derived
-      change24h: 0, // Placeholder
+      price: nativeSolPrice, 
+      usdValue: nativeSolUsdValue, 
+      change24h: 0, 
       image: SOL_IMAGE_URL,
-      type: 'token',
+      type: 'native', // Corrected: Ensure SOL is typed as 'native'
     };
 
     // Filter out SOL from splTokens if it was accidentally included by backend in tokens list
@@ -430,8 +446,8 @@ const DashboardScreen: React.FC = () => {
                 <>
                   <TouchableOpacity 
                     onPress={() => { 
-                      console.log('[Send Modal Token Card] Pressed.'); 
-                      setTokenModalVisible(true); 
+                      console.log('[Send Modal Token Card] Pressed. Opening dedicated token picker.'); 
+                      setShowTokenPickerForSend(true);
                     }}
                     style={modalStyles.tokenCard}
                   >
@@ -570,6 +586,48 @@ const DashboardScreen: React.FC = () => {
                   </View>
                 </>
               )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* New Token Picker Modal for Send Screen */}
+        <Modal
+          visible={showTokenPickerForSend}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowTokenPickerForSend(false)}
+        >
+          <View style={pickerModalStyles.modalContainer}>
+            <View style={pickerModalStyles.modalContent}>
+              <Text style={pickerModalStyles.title}>Select Token to Send</Text>
+              <FlatList
+                data={displayTokens}
+                keyExtractor={(item, index) => item.mint ?? index.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={pickerModalStyles.tokenItem}
+                    onPress={() => {
+                      setSelectedToken(item);
+                      setSendAmount(''); // Reset amount when token changes
+                      setShowTokenPickerForSend(false);
+                    }}
+                  >
+                    {item.image ? (
+                      <Image source={{ uri: item.image }} style={pickerModalStyles.tokenImage} />
+                    ) : (
+                      <View style={pickerModalStyles.tokenImagePlaceholder}><Text>💰</Text></View>
+                    )}
+                    <View style={pickerModalStyles.tokenInfo}>
+                      <Text style={pickerModalStyles.tokenName}>{item.name} ({item.symbol})</Text>
+                      <Text style={pickerModalStyles.tokenBalance}>Balance: {item.balance}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                ItemSeparatorComponent={() => <View style={pickerModalStyles.separator} />}
+              />
+              <TouchableOpacity onPress={() => setShowTokenPickerForSend(false)} style={pickerModalStyles.closeButton}>
+                <Text style={pickerModalStyles.closeButtonText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -712,6 +770,79 @@ const modalStyles = StyleSheet.create({
   errorText: {
     color: COLORS.error,
     fontSize: 14,
+  },
+});
+
+// Styles for the new Token Picker Modal
+const pickerModalStyles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end', // Appears from bottom
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#10151A', // Dark background
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxHeight: '70%', // Max height
+  },
+  title: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  tokenItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+  },
+  tokenImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 15,
+  },
+  tokenImagePlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 15,
+    backgroundColor: '#232B36',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tokenInfo: {
+    flex: 1,
+  },
+  tokenName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  tokenBalance: {
+    color: '#aaa',
+    fontSize: 14,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#232B36', // Separator color
+  },
+  closeButton: {
+    marginTop: 20,
+    backgroundColor: '#232B36',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

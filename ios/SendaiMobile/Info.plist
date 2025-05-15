@@ -9,7 +9,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Privy SAK React Native</string>
+    <string>Sendai Mobile</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -29,14 +29,14 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>privysakreactnative</string>
-          <string>com.bhu1tyagi.privysakreactnative</string>
+          <string>sendaimobile</string>
+          <string>com.sendai.mobile</string>
         </array>
       </dict>
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>exp+privy-sak-react-native</string>
+          <string>exp+sendai-mobile</string>
         </array>
       </dict>
     </array>
@@ -53,8 +53,6 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
-    <key>NSFaceIDUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>We need access to your photos to let you pick images.</string>
     <key>UILaunchStoryboardName</key>

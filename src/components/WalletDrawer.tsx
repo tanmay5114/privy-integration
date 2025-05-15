@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-ico
 import { LinearGradient } from 'expo-linear-gradient';
 import { useWallet } from '../walletProviders/hooks/useWallet';
 import { useAuth } from '../walletProviders/hooks/useAuth';
+import { useWalletData } from '../hooks/useWalletData';
 import COLORS from '../assets/colors';
 
 const { width, height } = Dimensions.get('window');
@@ -58,6 +59,7 @@ const mockWallets = [
 const WalletDrawer: React.FC<WalletDrawerProps> = ({ visible, onClose }) => {
   const { address, publicKey } = useWallet();
   const { logout } = useAuth();
+  const { assets, loading: walletDataLoading, error: walletDataError } = useWalletData();
   const walletAddress = address || publicKey?.toString();
   const slideAnim = useRef(new Animated.Value(height)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -110,7 +112,13 @@ const WalletDrawer: React.FC<WalletDrawerProps> = ({ visible, onClose }) => {
 
   const initials = walletAddress ? walletAddress.substring(0, 2).toUpperCase() : 'W1';
   const walletName = 'Wallet 1';
-  const balance = '$2,321.10'; // Placeholder, replace with real balance if available
+
+  const netWorth = useMemo(() => {
+    if (walletDataLoading) return 'Loading...';
+    if (walletDataError) return 'N/A';
+    if (assets?.totalUsdValue === undefined || assets?.totalUsdValue === null) return '$0.00';
+    return `$${assets.totalUsdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }, [assets, walletDataLoading, walletDataError]);
 
   return (
     <Modal
@@ -153,7 +161,8 @@ const WalletDrawer: React.FC<WalletDrawerProps> = ({ visible, onClose }) => {
 
           {/* Wallet Name, Balance, Address */}
           <Text style={styles.walletName}>{walletName}</Text>
-          <Text style={styles.walletBalance}>{balance}</Text>
+          <Text style={styles.netWorthLabel}>Net Worth</Text>
+          <Text style={styles.walletBalance}>{netWorth}</Text>
           <View style={styles.addressRow}>
             <Text style={styles.walletAddress} numberOfLines={1} ellipsizeMode="middle">
               {walletAddress ? `${walletAddress.substring(0, 4)}...${walletAddress.slice(-4)}` : 'Aeu7...mfiX'}
@@ -167,7 +176,12 @@ const WalletDrawer: React.FC<WalletDrawerProps> = ({ visible, onClose }) => {
           <View style={styles.actionList}>
             {actions.map((action, idx) => (
               <TouchableOpacity key={action.label} style={styles.actionRow} onPress={
-                action.label === 'Add Wallet' ? () => setAddWalletModal(true) : action.onPress
+                action.label === 'Add Wallet' ? () => setAddWalletModal(true) : 
+                action.label === 'Explorer' ? () => {
+                  if (walletAddress) {
+                    Linking.openURL(`https://explorer.solana.com/address/${walletAddress}`);
+                  }
+                } : action.onPress
               }>
                 <Ionicons name={action.icon as any} size={22} color={COLORS.darkText.primary} style={styles.actionIcon} />
                 <Text style={styles.actionLabel}>{action.label}</Text>
@@ -335,6 +349,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.brandPrimary,
     marginTop: 8,
+  },
+  netWorthLabel: {
+    fontSize: 16,
+    color: COLORS.darkText.secondary,
     marginBottom: 2,
   },
   walletBalance: {

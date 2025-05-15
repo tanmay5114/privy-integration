@@ -1,15 +1,13 @@
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token';
 import dotenv from 'dotenv';
-import bs58 from 'bs58';
 import { TokenMetadataService } from './tokenMetadataService';
 
 dotenv.config();
 
 const RPC_URL = process.env.RPC_URL;
-const WALLET_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;
 const JUPITER_API_URL_GET_ORDER = process.env.JUPITER_API_URL_GET_ORDER;
-const JUPITER_API_URL_EXECUTE = process.env.JUPITER_API_URL_EXECUTE;
+const JUPITER_API_URL_EXECUTE = process.env.JUPITER_API_URL_EXECUTE_ORDER;
 const COINGECKO_API_URL = process.env.COINGECKO_API_URL;
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
 const BIRDEYE_API_URL = process.env.BIRDEYE_API_URL || 'https://public-api.birdeye.so/v1';
@@ -44,9 +42,6 @@ if (!RPC_URL) {
   throw new Error('RPC_URL is not defined in environment variables');
 }
 
-if (!WALLET_PRIVATE_KEY) {
-  throw new Error('WALLET_PRIVATE_KEY is not defined in environment variables');
-}
 
 const connection = new Connection(RPC_URL);
 
@@ -251,6 +246,7 @@ export class BlockchainService {
     try {
       const fromPubKey = new PublicKey(fromAddress);
       const toPubKey = new PublicKey(toAddress);
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
 
       if (tokenMint) {
         // Token transfer logic
@@ -311,7 +307,8 @@ export class BlockchainService {
             fromTokenAccount: fromTokenAccount.toBase58(),
             toTokenAccount: toTokenAccount.toBase58(),
             tokenMint: tokenMintPubKey.toBase58()
-          }
+          },
+          recentBlockhash: blockhash,
         };
 
       } else {
@@ -327,7 +324,8 @@ export class BlockchainService {
           accounts: {
             fromAddress: fromPubKey.toBase58(),
             toAddress: toPubKey.toBase58()
-          }
+          },
+          recentBlockhash: blockhash,
         };
       }
     } catch (error) {
@@ -338,10 +336,19 @@ export class BlockchainService {
   // Submit a signed transaction
   static async submitSignedTransaction(signedTransaction: string) {
     try {
-      const transaction = Transaction.from(Buffer.from(signedTransaction, 'base64'));
-      const signature = await connection.sendRawTransaction(transaction.serialize());
+      // const transaction = Transaction.from(Buffer.from(signedTransaction, 'base64')); // Old: Deserialize
+      // const signature = await connection.sendRawTransaction(transaction.serialize());   // Old: Re-serialize and send
+      
+      // New: Send the raw wire transaction received from the client directly
+      const wireTransaction = Buffer.from(signedTransaction, 'base64');
+      const signature = await connection.sendRawTransaction(wireTransaction, {
+        skipPreflight: true, // Can be useful if preflight is causing issues with an already signed tx
+      });
+
       await connection.confirmTransaction(signature);
       
+      console.log(`Transaction submitted successfully. Signature: ${signature}`);
+
       return {
         signature,
         status: 'success',

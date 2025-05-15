@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../constant';
 
 export interface WalletAsset {
   symbol: string;
@@ -10,7 +10,7 @@ export interface WalletAsset {
   mint?: string;
   decimals?: number;
   image?: string | null;
-  type?: 'token' | 'nft';
+  type?: 'token' | 'nft' | 'native';
 }
 
 export interface WalletAssets {
