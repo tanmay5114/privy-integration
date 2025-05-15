@@ -359,7 +359,6 @@ export class BlockchainService {
     }
   }
 
-  // Get a swap order from Jupiter
   static async getSwapOrder(
     inputMint: string,
     outputMint: string,
@@ -471,7 +470,6 @@ export class BlockchainService {
       throw new Error(`Failed to execute swap: ${error}`);
     }
   }
-
   // Get live token prices for a list of token mints
   static async getTokenPrices(tokenMints: string[]) {
     try {
@@ -752,6 +750,96 @@ export class BlockchainService {
         throw error;
       }
       throw new Error(`Failed to process getNewListings in BlockchainService: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  // Get detailed information for a specific token using Birdeye API token_overview
+  static async getTokenGeneralDetails(mintAddress: string) {
+    try {
+      if (!BIRDEYE_API_KEY) {
+        throw new Error('BIRDEYE_API_KEY is not defined in environment variables');
+      }
+
+      try {
+        new PublicKey(mintAddress); // Validate Solana mint address format
+      } catch (e) {
+        throw new Error('Invalid mint address format provided.');
+      }
+
+      const overviewApiBase = 'https://public-api.birdeye.so';
+      // Query parameters for token_overview, assuming 'address' is the key for the token mint
+      const params = new URLSearchParams({ address: mintAddress });
+      const fullUrl = `${overviewApiBase}/defi/token_overview?${params.toString()}`;
+
+      console.log('[BlockchainService.getTokenGeneralDetails] Requesting GET from Birdeye token_overview API:', fullUrl);
+
+      const response = await fetchWithRetry(
+        fullUrl,
+        {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+            'x-api-key': BIRDEYE_API_KEY,
+            'x-chain': 'solana' // Specify solana, though it might default if this header isn't strictly needed for this endpoint
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const responseBodyText = await response.text();
+        console.error('[BlockchainService.getTokenGeneralDetails] Birdeye token_overview API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: fullUrl,
+          body: responseBodyText,
+        });
+        let errorData;
+        try {
+            errorData = JSON.parse(responseBodyText);
+        } catch (e) {
+            errorData = { message: `Failed to parse error response: ${responseBodyText}` };
+        }
+        throw new Error(
+          `Failed to get token overview from Birdeye (status ${response.status}): ${errorData?.message || response.statusText}`
+        );
+      }
+
+      const overviewResult = await response.json();
+      console.log('[BlockchainService.getTokenGeneralDetails] Birdeye token_overview API Response:', JSON.stringify(overviewResult, null, 2));
+
+      if (!overviewResult || !overviewResult.success || !overviewResult.data) {
+        console.error('[BlockchainService.getTokenGeneralDetails] Invalid or incomplete data from Birdeye token_overview API. Expected .data object. Received:', overviewResult);
+        throw new Error('Invalid or incomplete data from Birdeye token_overview API. Expected .data object.');
+      }
+
+      const tokenData = overviewResult.data; // Assuming the token data is directly in overviewResult.data
+      const extensions = tokenData.extensions || {}; // Socials and other info often in extensions
+
+      // Mapping fields based on common Birdeye structures and desired output
+      // Some fields like circulating supply might not be directly available or under different names.
+      return {
+        mintAddress: tokenData.address || mintAddress, // Ensure we return the queried address
+        name: tokenData.name,
+        symbol: tokenData.symbol,
+        logoURI: tokenData.logoURI,
+        price: tokenData.price,
+        marketCap: tokenData.mc, // Market Cap
+        volume24h: tokenData.v24hUSD || tokenData.volume24h, // 24h Volume in USD
+        twitter: extensions.twitter, // Twitter handle from extensions
+        website: extensions.website, // Website URL from extensions
+        telegram: extensions.telegram, // Often in extensions
+        description: extensions.description, // Often in extensions
+        totalSupply: tokenData.supply || tokenData.totalSupply, // Total Supply
+        circulatingSupply: tokenData.circulatingSupply || extensions.circulatingSupply, // Circulating Supply (often estimated or less common)
+        // Add other fields if the token_overview endpoint provides them directly or in extensions
+      };
+
+    } catch (error) {
+      console.error(`[BlockchainService.getTokenGeneralDetails] Error processing token ${mintAddress} with token_overview:`, error);
+      if (error instanceof Error && (error.message.startsWith('Failed to get token overview') || error.message.startsWith('Invalid mint address') || error.message.startsWith('BIRDEYE_API_KEY'))) {
+        throw error;
+      }
+      throw new Error(`Failed to process getTokenGeneralDetails for ${mintAddress} using token_overview: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

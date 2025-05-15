@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Image, Linking } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Image, Linking, ActivityIndicator } from 'react-native';
 import COLORS from '../assets/colors';
 import { WalletAsset } from '../services/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,50 @@ interface TokenDetailModalProps {
   onSend: (token: WalletAsset) => void;
 }
 
+interface ApiTokenDetails {
+  mintAddress: string;
+  name: string;
+  symbol: string;
+  logoURI: string | null;
+  price?: number;
+  marketCap?: number;
+  volume24h?: number;
+  twitter?: string;
+  website?: string;
+  description?: string;
+  totalSupply?: number;
+  circulatingSupply?: number;
+  telegram?: string; // Added telegram as it was in the service
+}
+
+const formatNumber = (num: number | undefined | null, precision: number = 1, suffixIfMillion: string = 'M', suffixIfBillion: string = 'B') => {
+  if (num === undefined || num === null) return 'N/A';
+  if (num >= 1e9) {
+    return `$${(num / 1e9).toFixed(precision)}${suffixIfBillion}`;
+  }
+  if (num >= 1e6) {
+    return `$${(num / 1e6).toFixed(precision)}${suffixIfMillion}`;
+  }
+  if (num >= 1000) {
+    return `$${(num / 1000).toFixed(precision)}K`;
+  }
+  return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const formatSupply = (num: number | undefined | null, precision: number = 0) => {
+  if (num === undefined || num === null) return 'N/A';
+  if (num >= 1e9) {
+    return `${(num / 1e9).toFixed(precision)}B`;
+  }
+  if (num >= 1e6) {
+    return `${(num / 1e6).toFixed(precision)}M`;
+  }
+  if (num >= 1e3) {
+    return `${(num / 1e3).toFixed(precision)}K`;
+  }
+  return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+};
+
 const TokenDetailModal: React.FC<TokenDetailModalProps> = ({
   visible,
   onClose,
@@ -20,9 +64,38 @@ const TokenDetailModal: React.FC<TokenDetailModalProps> = ({
   onRefresh,
   onSend,
 }) => {
-  if (!token) return null;
+  const [modalTokenDetails, setModalTokenDetails] = useState<ApiTokenDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   const navigation = useAppNavigation();
+
+  useEffect(() => {
+    if (visible && token && token.mint) {
+      const fetchModalTokenDetails = async () => {
+        setLoadingDetails(true);
+        setErrorDetails(null);
+        setModalTokenDetails(null); // Clear previous details
+        try {
+          const response = await fetch(`http://localhost:3001/api/token/${token.mint}/details`);
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: response.statusText }));
+            throw new Error(errorData.message || `Failed to fetch token details (${response.status})`);
+          }
+          const data: ApiTokenDetails = await response.json();
+          setModalTokenDetails(data);
+          console.log('Fetched modalTokenDetails:', data);
+        } catch (err) {
+          console.error("Error fetching token details for modal:", err);
+          setErrorDetails(err instanceof Error ? err.message : 'An unknown error occurred');
+        }
+        setLoadingDetails(false);
+      };
+      fetchModalTokenDetails();
+    }
+  }, [visible, token]);
+
+  if (!token) return null;
 
   // Calculate 24h USD change if not present
   const price = typeof token.price === 'number' ? token.price : 0;
@@ -31,15 +104,81 @@ const TokenDetailModal: React.FC<TokenDetailModalProps> = ({
   const usdValue = typeof token.usdValue === 'number' ? token.usdValue : 0;
   const change24hUsd = price * balance * (change24h / 100);
 
-  // Token Info placeholders (replace with real data if available)
-  const marketCap = 23400000; // $23.4M placeholder
-  const mint = token.mint || 'SEND...pCxa';
-  const volume24h = 1360000; // $1.36M placeholder
-  const fdv = 23400000; // $23.4M placeholder
-  const circulatingSupply = 999000000; // 999M placeholder
-  const totalSupply = 999000000; // 999M placeholder
-  const twitterUrl = '#'; // placeholder
-  const websiteUrl = '#'; // placeholder
+  // Token Info - use modalTokenDetails if available, otherwise show placeholders or loading
+  const displayMint = modalTokenDetails?.mintAddress || token.mint || 'N/A';
+  const displayDescription = modalTokenDetails?.description || 'No description available.';
+
+  const renderTokenInfo = () => {
+    if (loadingDetails) {
+      return <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 20 }} />;
+    }
+    if (errorDetails) {
+      return <Text style={styles.errorText}>Error: {errorDetails}</Text>;
+    }
+    if (!modalTokenDetails) {
+      return <Text style={styles.errorText}>Token information not available.</Text>; // Or more placeholders
+    }
+
+    const { 
+      marketCap: apiMarketCap,
+      volume24h,
+      totalSupply,
+      circulatingSupply,
+      price
+    } = modalTokenDetails;
+
+    let displayMarketCap = apiMarketCap;
+    if ((displayMarketCap === undefined || displayMarketCap === null) &&
+        typeof price === 'number' && 
+        typeof circulatingSupply === 'number') {
+      displayMarketCap = price * circulatingSupply;
+    }
+
+    // FDV might be calculated if price and total supply are available
+    let fdvDisplay = 'N/A';
+    if (price && totalSupply) {
+      fdvDisplay = formatNumber(price * totalSupply);
+    } else if (displayMarketCap && totalSupply && circulatingSupply && circulatingSupply > 0) {
+      // Estimate price from marketCap / circulatingSupply if direct price isn't on modalTokenDetails
+      const estimatedPrice = displayMarketCap / circulatingSupply;
+      fdvDisplay = formatNumber(estimatedPrice * totalSupply);
+    } else {
+      fdvDisplay = formatNumber(displayMarketCap); // Fallback to marketCap if FDV cannot be calculated
+    }
+
+    const circulatingSupplyPercent = (circulatingSupply && totalSupply && totalSupply > 0) 
+      ? (circulatingSupply / totalSupply * 100).toFixed(0) + '%'
+      : 'N/A';
+
+    return (
+      <View style={styles.tokenInfoGrid}>
+        <View style={styles.tokenInfoBox}>
+          <Text style={styles.tokenInfoLabelSmall}>Market Cap</Text>
+          <Text style={styles.tokenInfoValue}>{formatNumber(displayMarketCap)}</Text>
+        </View>
+        <View style={styles.tokenInfoBox}>
+          <Text style={styles.tokenInfoLabelSmall}>Mint</Text>
+          <Text style={styles.tokenInfoValue} numberOfLines={1}>{displayMint.substring(0,4)}...{displayMint.substring(displayMint.length - 4)}</Text>
+        </View>
+        <View style={styles.tokenInfoBox}>
+          <Text style={styles.tokenInfoLabelSmall}>Volume (24h)</Text>
+          <Text style={styles.tokenInfoValue}>{formatNumber(volume24h)}</Text>
+        </View>
+        <View style={styles.tokenInfoBox}>
+          <Text style={styles.tokenInfoLabelSmall}>FDV</Text>
+          <Text style={styles.tokenInfoValue}>{fdvDisplay}</Text>
+        </View>
+        <View style={styles.tokenInfoBox}>
+          <Text style={styles.tokenInfoLabelSmall}>Circulating Supply</Text>
+          <Text style={styles.tokenInfoValue}>{formatSupply(circulatingSupply)} <Text style={styles.tokenInfoPercent}>{circulatingSupplyPercent}</Text></Text>
+        </View>
+        <View style={styles.tokenInfoBox}>
+          <Text style={styles.tokenInfoLabelSmall}>Total Supply</Text>
+          <Text style={styles.tokenInfoValue}>{formatSupply(totalSupply)}</Text>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <Modal
@@ -106,42 +245,38 @@ const TokenDetailModal: React.FC<TokenDetailModalProps> = ({
 
           {/* Token Info Section */}
           <Text style={styles.tokenInfoLabel}>Token Info</Text>
-          <View style={styles.tokenInfoGrid}>
-            <View style={styles.tokenInfoBox}>
-              <Text style={styles.tokenInfoLabelSmall}>Market Cap</Text>
-              <Text style={styles.tokenInfoValue}>${(marketCap / 1e6).toFixed(1)}M</Text>
+          {renderTokenInfo()}
+          {modalTokenDetails?.description && (
+            <View style={styles.descriptionContainer}>
+                <Text style={styles.tokenInfoLabelSmall}>Description</Text>
+                <Text style={styles.descriptionText}>{modalTokenDetails.description}</Text>
             </View>
-            <View style={styles.tokenInfoBox}>
-              <Text style={styles.tokenInfoLabelSmall}>Mint</Text>
-              <Text style={styles.tokenInfoValue} numberOfLines={1}>{mint}</Text>
-            </View>
-            <View style={styles.tokenInfoBox}>
-              <Text style={styles.tokenInfoLabelSmall}>Volume (24)</Text>
-              <Text style={styles.tokenInfoValue}>${(volume24h / 1e6).toFixed(2)}M</Text>
-            </View>
-            <View style={styles.tokenInfoBox}>
-              <Text style={styles.tokenInfoLabelSmall}>FDV</Text>
-              <Text style={styles.tokenInfoValue}>${(fdv / 1e6).toFixed(1)}M</Text>
-            </View>
-            <View style={styles.tokenInfoBox}>
-              <Text style={styles.tokenInfoLabelSmall}>Circulating Supply</Text>
-              <Text style={styles.tokenInfoValue}>{(circulatingSupply / 1e6).toFixed(0)}M <Text style={styles.tokenInfoPercent}>100%</Text></Text>
-            </View>
-            <View style={styles.tokenInfoBox}>
-              <Text style={styles.tokenInfoLabelSmall}>Total Supply</Text>
-              <Text style={styles.tokenInfoValue}>{(totalSupply / 1e6).toFixed(0)}M</Text>
-            </View>
-          </View>
+          )}
 
           {/* Social Links */}
-          <View style={styles.socialLinksRow}>
-            <TouchableOpacity style={styles.socialButton} onPress={() => { if (twitterUrl !== '#') { Linking.openURL(twitterUrl); } }}>
-              <Text style={styles.socialButtonText}>Twitter</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.socialButton} onPress={() => { if (websiteUrl !== '#') { Linking.openURL(websiteUrl); } }}>
-              <Text style={styles.socialButtonText}>Website</Text>
-            </TouchableOpacity>
-          </View>
+          {(modalTokenDetails?.twitter || modalTokenDetails?.website || modalTokenDetails?.telegram) && (
+            <View style={styles.socialLinksRow}>
+              {modalTokenDetails?.website && (
+                <TouchableOpacity style={styles.socialButton} onPress={() => Linking.openURL(modalTokenDetails.website!)}>
+                  <Ionicons name="globe-outline" size={16} color={COLORS.white} style={{marginRight: 6}}/> 
+                  <Text style={styles.socialButtonText}>Website</Text>
+                </TouchableOpacity>
+              )}
+              {modalTokenDetails?.twitter && (
+                <TouchableOpacity style={styles.socialButton} onPress={() => Linking.openURL(modalTokenDetails.twitter!)}>
+                   <Ionicons name="logo-twitter" size={16} color={COLORS.white} style={{marginRight: 6}}/> 
+                  <Text style={styles.socialButtonText}>Twitter</Text>
+                </TouchableOpacity>
+              )}
+              {modalTokenDetails?.telegram && (
+                <TouchableOpacity style={styles.socialButton} onPress={() => Linking.openURL(modalTokenDetails.telegram!)}>
+                  {/* Consider using a Telegram specific icon if available or a generic link icon */}
+                  <Ionicons name="paper-plane-outline" size={16} color={COLORS.white} style={{marginRight: 6}}/> 
+                  <Text style={styles.socialButtonText}>Telegram</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* Action Buttons */}
           <View style={styles.actionRow}>
@@ -353,20 +488,41 @@ const styles = StyleSheet.create({
   },
   socialLinksRow: {
     flexDirection: 'row',
-    marginBottom: 8,
-    marginTop: 2,
+    marginBottom: 12,
+    marginTop: 8,
+    flexWrap: 'wrap',
   },
   socialButton: {
     backgroundColor: COLORS.darkBg.secondary,
-    borderRadius: 8,
+    borderRadius: 20,
     paddingVertical: 8,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     marginRight: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   socialButtonText: {
     color: COLORS.white,
     fontSize: 15,
     fontWeight: '500',
+  },
+  errorText: {
+    color: COLORS.status.error,
+    textAlign: 'center',
+    marginVertical: 20,
+    fontSize: 16,
+  },
+  descriptionContainer: {
+    backgroundColor: COLORS.darkBg.secondary,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  descriptionText: {
+    color: COLORS.white,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
 

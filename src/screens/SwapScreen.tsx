@@ -29,100 +29,52 @@ const SwapScreen: React.FC = () => {
   const [tokenSelectionFor, setTokenSelectionFor] = useState<'input' | 'output' | null>(null);
 
   useEffect(() => {
-    const fetchTokens = async () => {
+    const setupTokens = () => {
       setIsTokenListLoading(true);
       setTokenListError(null);
-      // Check if the wallet address is a valid one before fetching
-      if (!address || address.length < 32) { // Removed redundant check
-        setTokenListError("Wallet address not set or invalid. Please connect wallet or update placeholder.");
+
+      // Check if the wallet address is a valid one before setting tokens
+      if (!address || address.length < 32) {
+        setTokenListError("Wallet address not set or invalid. Please connect your wallet or update placeholder.");
         setIsTokenListLoading(false);
         setInputToken(null);
         setOutputToken(null);
         setAvailableTokens([]);
         return;
       }
-      try {
-        const tokens = await JupiterService.getAvailableTokens(address!);
-        console.log('Raw tokens response from API:', JSON.stringify(tokens, null, 2)); // Log raw response
-        setAvailableTokens(tokens);
-        
-        const solMintAddress = 'So11111111111111111111111111111111111111112';
-        const defaultSolToken = {
-          name: 'Solana',
-          mintAddress: solMintAddress,
-          balance: '0.00 SOL', // Placeholder balance
-          decimals: 9, // Solana has 9 decimals
-          // TODO: Add other necessary fields like logoURI if your components use them
-        };
 
-        const defaultSendToken = {
-          name: 'Send',
-          mintAddress: 'SENDdRQtYMWaQrBroBrJ2Q53fgVuq95CV9UPGEvpCxa',
-          balance: '0.00 SEND', // Placeholder balance
-          decimals: 6, // Corrected based on user: 1 SEND = 10000 smallest units
-        };
+      // Define local default tokens
+      const solMintAddress = 'So11111111111111111111111111111111111111112';
+      const defaultSolToken = {
+        name: 'Solana',
+        mintAddress: solMintAddress,
+        balance: '0.00 SOL', // Placeholder balance
+        decimals: 9, // Solana has 9 decimals
+        // TODO: Add other necessary fields like logoURI if your components use them
+      };
 
-        let finalInputToken = defaultSendToken;
-        let finalOutputToken = null;
-        let finalAvailableTokens = tokens && Array.isArray(tokens) ? [...tokens] : [];
+      const defaultSendToken = {
+        name: 'Send',
+        mintAddress: 'SENDdRQtYMWaQrBroBrJ2Q53fgVuq95CV9UPGEvpCxa',
+        balance: '0.00 SEND', // Placeholder balance
+        decimals: 6, // Using 6 as per original defaultSendToken definition (line 49)
+      };
 
-        // Determine Output Token (SOL)
-        const solFromApi = finalAvailableTokens.find(token => token.mintAddress === solMintAddress);
-        finalOutputToken = solFromApi || defaultSolToken;
+      setInputToken(defaultSendToken);
+      setOutputToken(defaultSolToken);
 
-        // Ensure defaultSendToken is in availableTokens for the modal
-        if (!finalAvailableTokens.find(token => token.mintAddress === defaultSendToken.mintAddress)) {
-          finalAvailableTokens.unshift(defaultSendToken); // Add to beginning if not present
-        }
+      const localTokens = [defaultSendToken, defaultSolToken];
+      // Ensure unique by mintAddress, though for these two specific distinct tokens it's not strictly necessary.
+      const uniqueLocalTokens = localTokens.filter((value, index, self) =>
+          index === self.findIndex((t) => (t.mintAddress === value.mintAddress))
+      );
+      setAvailableTokens(uniqueLocalTokens);
 
-        // Ensure finalOutputToken (SOL, possibly the local default) is in availableTokens for the modal
-        // (especially if it was the defaultSolToken and not from API)
-        if (finalOutputToken.mintAddress === defaultSolToken.mintAddress && !solFromApi) {
-          if (!finalAvailableTokens.find(token => token.mintAddress === defaultSolToken.mintAddress)) {
-             // Check again because sendToken might be SOL
-            finalAvailableTokens.unshift(defaultSolToken);
-          }
-        }
-        
-        // Handle initial state if API fetch failed or returned empty
-        if (!(tokens && Array.isArray(tokens) && tokens.length > 0)) {
-          if (!tokenListError) { // Don't overwrite a fetch error
-            setTokenListError("Token list from API is empty or invalid. Using local defaults.");
-          }
-        }
-        
-        setInputToken(finalInputToken);
-        setOutputToken(finalOutputToken);
-        setAvailableTokens(finalAvailableTokens);
-
-      } catch (e: any) {
-        // If API fails entirely, set up with local Send and SOL defaults
-        console.error("Failed to fetch token list from API:", e.message);
-        setTokenListError(e.message || "Failed to load token list from API.");
-        
-        const localSol = {
-          name: 'Solana',
-          mintAddress: 'So11111111111111111111111111111111111111112',
-          balance: '0.00 SOL',
-          decimals: 9,
-        };
-        const localSend = {
-          name: 'Send',
-          mintAddress: 'SENDdRQtYMWaQrBroBrJ2Q53fgVuq95CV9UPGEvpCxa', // Ensure this mint is correct for Send token
-          balance: '0.00 SEND',
-          decimals: 4, // Corrected based on user: 1 SEND = 10000 smallest units
-        };
-        setInputToken(localSend);
-        setOutputToken(localSol);
-        setAvailableTokens([localSend, localSol].filter((value, index, self) => 
-            index === self.findIndex((t) => (t.mintAddress === value.mintAddress)) // Ensure unique by mint if send is sol
-        ));
-      } finally {
-        setIsTokenListLoading(false);
-      }
+      setIsTokenListLoading(false); // Tokens are set, loading is finished
     };
-    fetchTokens();
-  }, []);
+
+    setupTokens();
+  }, [address]); // Re-run if the address changes
 
   // Keypad handler
   const handleKeyPress = (val: string) => {

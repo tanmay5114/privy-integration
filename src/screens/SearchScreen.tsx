@@ -1,38 +1,164 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AppHeader from '../components/AppHeader';
 import WalletDrawer from '../components/WalletDrawer';
+import TokenDetailModal from '../components/TokenDetailModal';
+import { WalletAsset } from '../services/api';
 
 const TABS = ['Top', 'New'];
 const TIME_FILTER = '5m';
 
-const TOKENS = [
-  { rank: 1, name: 'SOL', age: '11mo', orgVol: '99', vol: '$1.59M', liq: '$96.5M', change: '+0.148%', icon: null, verified: true },
-  { rank: 2, name: 'USDC', age: '11mo', orgVol: '100', vol: '$513K', liq: '$25.3M', change: '-0.00621%', icon: null, verified: true },
-  { rank: 3, name: 'USELESS', age: '1d', orgVol: '94', vol: '$59.7K', liq: '$1.60M', change: '+4.73%', icon: null, verified: false },
-  { rank: 4, name: 'ONE', age: '1h', orgVol: '86', vol: '$12.7K', liq: '$108K', change: '+17.4%', icon: null, verified: false },
-  { rank: 5, name: 'USDT', age: '11mo', orgVol: '100', vol: '$60.7K', liq: '$16M', change: '-0.00789%', icon: null, verified: true },
-  { rank: 6, name: 'GOD', age: '22h', orgVol: '92', vol: '$10.4K', liq: '$225K', change: '+8.08%', icon: null, verified: false },
-];
+interface ApiToken {
+  address: string;
+  symbol: string;
+  name: string;
+  logoURI: string | null;
+  price?: number; // Price is available for top tokens
+  // Fields that might not be directly available or need transformation
+  // For example, 'age', 'orgVol', 'vol', 'liq', 'change', 'verified' from the old mock
+}
+
+interface ApiNewToken extends ApiToken {
+  listedAt: string; // Specific to new listings
+  chain: string;
+}
+
+// Combined type for items in FlatList
+type TokenListItem = ApiToken & {
+  rank: number;
+  listedAt?: string; // Optional, for new tokens
+  // Add any other transformed or UI-specific fields here
+};
 
 const SearchScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('Top');
   const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
+  const [topTokensData, setTopTokensData] = useState<TokenListItem[]>([]);
+  const [newTokensData, setNewTokensData] = useState<TokenListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [isTokenModalVisible, setIsTokenModalVisible] = useState(false);
+  const [selectedTokenForModal, setSelectedTokenForModal] = useState<WalletAsset | null>(null);
+
+  useEffect(() => {
+    const fetchTokens = async () => {
+      setLoading(true);
+      try {
+        if (activeTab === 'Top') {
+          const response = await fetch('http://localhost:3001/api/wallet/top-tokens?limit=10');
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data: ApiToken[] = await response.json();
+          setTopTokensData(data.map((token, index) => ({ ...token, rank: index + 1 })));
+        } else if (activeTab === 'New') {
+          const response = await fetch('http://localhost:3001/api/new-listings?limit=10');
+           if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data: ApiNewToken[] = await response.json();
+          setNewTokensData(data.map((token, index) => ({ ...token, rank: index + 1 })));
+        }
+      } catch (error) {
+        console.error("Failed to fetch tokens:", error);
+        // Optionally, set an error state here to display to the user
+        if (activeTab === 'Top') setTopTokensData([]);
+        if (activeTab === 'New') setNewTokensData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTokens();
+  }, [activeTab]);
 
   // Filter tokens based on active tab
-  const filteredTokens = activeTab === 'New'
-    ? TOKENS.filter(token => {
-        // Show tokens with age containing 'd', 'h', or less than 7 days
-        if (token.age.endsWith('h')) return true;
-        if (token.age.endsWith('d')) {
-          const days = parseInt(token.age);
-          return days <= 7;
-        }
-        return false;
-      })
-    : TOKENS;
+  const filteredTokens = activeTab === 'Top' ? topTokensData : newTokensData;
+
+  const handleTokenPress = (item: TokenListItem) => {
+    const walletAsset: WalletAsset = {
+      mint: item.address,
+      name: item.name,
+      symbol: item.symbol,
+      image: item.logoURI,
+      price: item.price !== undefined ? item.price : 0,
+      balance: '0',
+      usdValue: 0,
+      change24h: 0,
+      type: 'token',
+      decimals: 0,
+    };
+    setSelectedTokenForModal(walletAsset);
+    setIsTokenModalVisible(true);
+  };
+
+  const renderListHeader = () => (
+    <View style={styles.tableHeader}>
+      <Text style={[styles.headerCell, { flex: 0.5 }]}>#</Text>
+      <Text style={[styles.headerCell, { flex: 2 }]}>Token</Text>
+      {activeTab === 'Top' && <Text style={[styles.headerCell, { flex: 1, textAlign: 'right' }]}>Price</Text>}
+      {activeTab === 'New' && <Text style={[styles.headerCell, { flex: 1.5, textAlign: 'right' }]}>Listed At</Text>}
+      {/* Remove Org. Vol. and Liq. as they are not in the API response for now */}
+    </View>
+  );
+
+  const renderTokenItem = ({ item, index }: { item: TokenListItem, index: number }) => {
+    const formatPrice = (price?: number) => {
+      if (price === undefined || price === null) return 'N/A';
+      if (price < 0.0001 && price > 0) return `< $0.0001`;
+      return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: price > 1 ? 2 : 6 })}`;
+    };
+    
+    const formatListedAt = (listedAt?: string) => {
+      if (!listedAt) return 'N/A';
+      try {
+        const date = new Date(listedAt);
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+      } catch (e) {
+        return listedAt; // return original string if parsing fails
+      }
+    };
+
+    return (
+      <TouchableOpacity onPress={() => handleTokenPress(item)}>
+        <View style={styles.tableRow}>
+          <Text style={[styles.cell, { flex: 0.5 }]}>{item.rank}</Text>
+          <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center' }}>
+            {item.logoURI ? (
+              <Image 
+                source={{ uri: item.logoURI }}
+                style={styles.tokenIcon} 
+                onError={(e) => {
+                  console.log("Failed to load remote image:", item.logoURI, e.nativeEvent.error);
+                  // In a more advanced scenario, you could set a state here
+                  // to specifically re-render this item with a placeholder
+                }}
+              />
+            ) : (
+              <View style={styles.tokenIcon} /> // Render a placeholder view if no logoURI
+            )}
+            <View>
+              <Text style={styles.tokenName} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
+              <Text style={styles.tokenSymbol}>{item.symbol}</Text>
+            </View>
+          </View>
+          {activeTab === 'Top' && (
+            <Text style={[styles.cell, { flex: 1, textAlign: 'right' }]}>
+              {formatPrice(item.price)}
+            </Text>
+          )}
+          {activeTab === 'New' && (
+             <Text style={[styles.cell, { flex: 1.5, textAlign: 'right' }]}>
+              {formatListedAt(item.listedAt)}
+            </Text>
+          )}
+          {/* Removed Org. Vol. and Liq. related Texts */}
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -71,42 +197,42 @@ const SearchScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Token List Header */}
-      <View style={styles.tableHeader}>
+      {/* Token List Header - Replaced with a function for dynamic headers */}
+      {/* <View style={styles.tableHeader}>
         <Text style={[styles.headerCell, { flex: 0.5 }]}>#</Text>
         <Text style={[styles.headerCell, { flex: 2 }]}>Token</Text>
         <Text style={[styles.headerCell, { flex: 1 }]}>Org. Vol.</Text>
         <Text style={[styles.headerCell, { flex: 1 }]}>Liq.</Text>
-      </View>
+      </View> */}
 
       {/* Token List */}
-      <FlatList
-        data={filteredTokens}
-        keyExtractor={item => item.rank.toString()}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        renderItem={({ item }) => (
-          <View style={styles.tableRow}>
-            <Text style={[styles.cell, { flex: 0.5 }]}>{item.rank}</Text>
-            <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center' }}>
-              {/* Placeholder for token icon */}
-              <View style={styles.tokenIconPlaceholder} />
-              <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.tokenName}>{item.name}</Text>
-                  {item.verified && <Ionicons name="checkmark-circle" size={14} color="#8C9AA8" style={{ marginLeft: 4 }} />}
-                </View>
-                <Text style={styles.tokenAge}>{item.age}</Text>
-              </View>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.orgVol}>{item.orgVol}</Text>
-              <Text style={[styles.tokenChange, { color: item.change.startsWith('-') ? '#FF6B6B' : '#4ADE80' }]}>{item.change}</Text>
-            </View>
-            <Text style={[styles.cell, { flex: 1 }]}>{item.liq}</Text>
-          </View>
-        )}
-      />
+      {loading ? (
+        <ActivityIndicator size="large" color="#D1FFB0" style={{ flex: 1, justifyContent: 'center' }} />
+      ) : filteredTokens.length === 0 && !loading ? (
+        <View style={styles.emptyListContainer}>
+          <Text style={styles.emptyListText}>No tokens found.</Text>
+          <Text style={styles.emptyListSubText}>Try a different filter or check back later.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredTokens}
+          keyExtractor={(item) => item.address + item.rank.toString()} // Ensure unique key
+          ListHeaderComponent={renderListHeader}
+          renderItem={renderTokenItem}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
+        />
+      )}
+
+      {selectedTokenForModal && (
+        <TokenDetailModal
+          visible={isTokenModalVisible}
+          onClose={() => setIsTokenModalVisible(false)}
+          token={selectedTokenForModal}
+          onRefresh={async () => { console.log('Refresh pressed in SearchScreen modal'); }}
+          onSend={(tokenToSend) => { console.log('Send pressed in SearchScreen modal:', tokenToSend.symbol); }}
+        />
+      )}
     </View>
   );
 };
@@ -186,8 +312,7 @@ const styles = StyleSheet.create({
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 4,
+    marginBottom: 8,
     paddingHorizontal: 4,
   },
   headerCell: {
@@ -201,7 +326,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#232B36',
     borderRadius: 12,
     marginBottom: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 8,
   },
   cell: {
@@ -213,17 +338,30 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#232B36',
+    backgroundColor: '#333',
     marginRight: 10,
+  },
+  tokenIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 10,
+    backgroundColor: '#303030',
   },
   tokenName: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 15,
+    maxWidth: 150,
   },
   tokenAge: {
     color: '#8C9AA8',
     fontSize: 12,
+    fontWeight: '500',
+  },
+  tokenSymbol: {
+    color: '#8C9AA8',
+    fontSize: 13,
     fontWeight: '500',
   },
   orgVol: {
@@ -234,6 +372,22 @@ const styles = StyleSheet.create({
   tokenChange: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  emptyListContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 50,
+  },
+  emptyListText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  emptyListSubText: {
+    color: '#8C9AA8',
+    fontSize: 14,
+    marginTop: 8,
   },
 });
 

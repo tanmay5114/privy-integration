@@ -1,5 +1,5 @@
 const JUPITER_API_URL = 'http://10.0.2.2:3001/api/swap';
-const DIRECT_JUPITER_ULTRA_ORDER_API_URL = 'https://api.jup.ag/ultra/v1/order';
+const DIRECT_JUPITER_ULTRA_ORDER_API_URL = 'https://lite-api.jup.ag/ultra/v1/order';
 
 export class JupiterService {
   // Get a swap order from Jupiter by calling Jupiter Ultra API directly

@@ -50,6 +50,10 @@ interface NewListingsParams {
   chain?: string;
 }
 
+interface TokenDetailsParams {
+  mintAddress: string;
+}
+
 // Get all assets held in a wallet
 const getWalletAssets: RequestHandler<WalletAddressParams> = async (req, res) => {
   try {
@@ -369,6 +373,40 @@ const getNewTokenListings: RequestHandler<{}, any, any, NewListingsParams> = asy
   }
 };
 
+// Handler to get detailed information for a specific token
+const getTokenDetails: RequestHandler<TokenDetailsParams> = async (req, res) => {
+  try {
+    const { mintAddress } = req.params;
+
+    if (!mintAddress) {
+      return res.status(400).json({ message: 'Mint address parameter is required.' });
+    }
+
+    const tokenDetails = await BlockchainService.getTokenGeneralDetails(mintAddress);
+    res.status(200).json(tokenDetails);
+  } catch (error) {
+    console.error(`[API Route /token/:mintAddress/details] Error fetching token details for ${req.params.mintAddress}:`, error);
+    if (error instanceof Error) {
+      if (error.message.includes('Invalid mint address format')) {
+        return res.status(400).json({ message: error.message });
+      } else if (error.message.includes('Token with address') && error.message.includes('not found')) {
+        return res.status(404).json({ message: error.message });
+      } else if (error.message.includes('BIRDEYE_API_KEY')) {
+        return res.status(500).json({ message: 'Server configuration error related to API key.' });
+      } else if (error.message.startsWith('Failed to get token details from Birdeye')) {
+        // Catch specific Birdeye API failures from the service
+        return res.status(502).json({ message: error.message }); // 502 Bad Gateway if Birdeye fails
+      } else if (error.message.startsWith('Invalid or incomplete data structure')){
+        return res.status(502).json({ message: "Failed to retrieve token details due to upstream data issue."});
+      }
+      // Generic internal server error for other cases from the service
+      return res.status(500).json({ message: error.message || 'Failed to fetch token details' });
+    } else {
+      return res.status(500).json({ message: 'An unknown error occurred while fetching token details' });
+    }
+  }
+};
+
 // Register routes
 router.get('/wallet/:address/assets', getWalletAssets);
 router.get('/wallet/:address/assets/prices', getWalletAssetsWithPrices);
@@ -383,4 +421,5 @@ router.post('/swap/order', getSwapOrder);
 router.post('/swap/execute', executeSwap);
 router.get('/wallet/top-tokens', getTopTokens);
 router.get('/new-listings', getNewTokenListings);
+router.get('/token/:mintAddress/details', getTokenDetails);
 export default router; 
