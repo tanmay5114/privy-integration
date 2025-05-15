@@ -10,7 +10,7 @@ export interface WalletAsset {
   mint?: string;
   decimals?: number;
   image?: string | null;
-  type?: 'token' | 'nft';
+  type?: 'token' | 'nft' | 'native';
 }
 
 export interface WalletAssets {

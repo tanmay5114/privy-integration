@@ -246,6 +246,7 @@ export class BlockchainService {
     try {
       const fromPubKey = new PublicKey(fromAddress);
       const toPubKey = new PublicKey(toAddress);
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
 
       if (tokenMint) {
         // Token transfer logic
@@ -306,7 +307,8 @@ export class BlockchainService {
             fromTokenAccount: fromTokenAccount.toBase58(),
             toTokenAccount: toTokenAccount.toBase58(),
             tokenMint: tokenMintPubKey.toBase58()
-          }
+          },
+          recentBlockhash: blockhash,
         };
 
       } else {
@@ -322,7 +324,8 @@ export class BlockchainService {
           accounts: {
             fromAddress: fromPubKey.toBase58(),
             toAddress: toPubKey.toBase58()
-          }
+          },
+          recentBlockhash: blockhash,
         };
       }
     } catch (error) {
@@ -333,10 +336,19 @@ export class BlockchainService {
   // Submit a signed transaction
   static async submitSignedTransaction(signedTransaction: string) {
     try {
-      const transaction = Transaction.from(Buffer.from(signedTransaction, 'base64'));
-      const signature = await connection.sendRawTransaction(transaction.serialize());
+      // const transaction = Transaction.from(Buffer.from(signedTransaction, 'base64')); // Old: Deserialize
+      // const signature = await connection.sendRawTransaction(transaction.serialize());   // Old: Re-serialize and send
+      
+      // New: Send the raw wire transaction received from the client directly
+      const wireTransaction = Buffer.from(signedTransaction, 'base64');
+      const signature = await connection.sendRawTransaction(wireTransaction, {
+        skipPreflight: true, // Can be useful if preflight is causing issues with an already signed tx
+      });
+
       await connection.confirmTransaction(signature);
       
+      console.log(`Transaction submitted successfully. Signature: ${signature}`);
+
       return {
         signature,
         status: 'success',
