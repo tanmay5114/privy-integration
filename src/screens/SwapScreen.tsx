@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, TextInput, Image, Modal, FlatList, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSolanaWallets } from '@privy-io/react-auth'; // Import for Privy wallets
-import { Transaction } from '@solana/web3.js'; // Import for Solana Transaction
+import { useWallet } from '@/walletProviders';
+import { Transaction, VersionedTransaction } from '@solana/web3.js'; // Import for Solana Transaction
 import { Buffer } from 'buffer'; // Import Buffer for base64 operations
 import AppHeader from '../components/AppHeader';
 import WalletDrawer from '../components/WalletDrawer';
@@ -16,8 +16,7 @@ const SwapScreen: React.FC = () => {
   const [walletDrawerVisible, setWalletDrawerVisible] = useState(false);
   
   // Privy Solana Wallets
-  const { wallets, ready } = useSolanaWallets();
-  const wallet = wallets && wallets.length > 0 ? wallets[0] : null;
+  const { wallet, connected , signTransaction} = useWallet();
 
   // State for tokens
   const [availableTokens, setAvailableTokens] = useState<any[]>([]);
@@ -187,7 +186,7 @@ const SwapScreen: React.FC = () => {
   };
 
   const handleExecuteSwap = async () => {
-    if (!wallet || !ready) {
+    if (!wallet || !connected) {
       setError("Wallet not connected or not ready. Please connect your wallet.");
       setIsLoading(false);
       return;
@@ -218,9 +217,9 @@ const SwapScreen: React.FC = () => {
       }
 
       // 3. Sign the transaction with the Privy wallet
-      let signedTxObject: Transaction;
+      let signedTxObject: Transaction | VersionedTransaction;
       try {
-        signedTxObject = await wallet.signTransaction!(transaction);
+        signedTxObject = await signTransaction!(transaction);
       } catch (e: any) {
         console.error("Transaction signing failed or was rejected:", e);
         setError(`Transaction signing failed: ${e.message}`);

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db/connect';
-import { MessageRole } from '../../generated/prisma'; // Corrected path for MessageRole
+import { MessageRole } from '@prisma/client'; // Corrected path for MessageRole
 
 // Get messages by chat ID (clientChatId)
 export const getMessagesByChatId = async (req: Request, res: Response): Promise<void> => {

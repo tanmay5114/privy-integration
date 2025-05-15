@@ -1,13 +1,11 @@
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token';
 import dotenv from 'dotenv';
-import bs58 from 'bs58';
 import { TokenMetadataService } from './tokenMetadataService';
 
 dotenv.config();
 
 const RPC_URL = process.env.RPC_URL;
-const WALLET_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;
 const JUPITER_API_URL_GET_ORDER = process.env.JUPITER_API_URL_GET_ORDER;
 const JUPITER_API_URL_EXECUTE = process.env.JUPITER_API_URL_EXECUTE;
 const COINGECKO_API_URL = process.env.COINGECKO_API_URL;
@@ -44,9 +42,6 @@ if (!RPC_URL) {
   throw new Error('RPC_URL is not defined in environment variables');
 }
 
-if (!WALLET_PRIVATE_KEY) {
-  throw new Error('WALLET_PRIVATE_KEY is not defined in environment variables');
-}
 
 const connection = new Connection(RPC_URL);
 

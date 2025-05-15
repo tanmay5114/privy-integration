@@ -10,7 +10,7 @@ import {useCallback} from 'react';
 
 export function usePrivyWalletLogic() {
   const {login} = useLogin();
-  const {user, isReady, logout} = usePrivy();
+  const {user, isReady, logout, error} = usePrivy();
   const solanaWallet = useEmbeddedSolanaWallet();
   const {recover} = useRecoverEmbeddedWallet();
 
@@ -29,6 +29,7 @@ export function usePrivyWalletLogic() {
       try {
         setStatusMessage?.(`Connecting with privy via ${loginMethod}...`);
         // The actual login call
+        console.error('error', error);
         const session = await login({
           loginMethods: [loginMethod],
           appearance: {logo: ''},
@@ -41,7 +42,7 @@ export function usePrivyWalletLogic() {
         setStatusMessage?.(`Connection failed: ${error.message}`);
       }
     },
-    [user, login],
+    [user, login, isReady],
   );
 
   const monitorSolanaWallet = useCallback(

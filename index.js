@@ -1,6 +1,5 @@
 // Import all polyfills first
 import './src/polyfills';
-import 'abort-controller/polyfill';
 
 // Initialize react-native-screens
 import { enableScreens } from 'react-native-screens';

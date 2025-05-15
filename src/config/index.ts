@@ -6,8 +6,8 @@ import {
 } from '@env';
 
 // Fallback values in case environment variables are undefined
-const DEFAULT_PRIVY_APP_ID = 'local-dev-app-id';
-const DEFAULT_PRIVY_CLIENT_ID = 'local-dev-client-id';
+const DEFAULT_PRIVY_APP_ID = 'cmao4yp4t00aml70npjzntz2m';
+const DEFAULT_PRIVY_CLIENT_ID = 'client-WY6LJYuq5ktV4GyCTSqGrb8uuqrP5n9fDbNnQZ8EJrn7Z';
 
 /** Extended config for Privy */
 export interface PrivyConfig {
