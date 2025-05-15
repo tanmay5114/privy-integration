@@ -40,6 +40,16 @@ interface ExecuteSwapBody {
   requestId: string;
 }
 
+interface TopTokenParams {
+  sortBy?: string;
+  limit?: string;
+}
+
+interface NewListingsParams {
+  limit?: string;
+  chain?: string;
+}
+
 // Get all assets held in a wallet
 const getWalletAssets: RequestHandler<WalletAddressParams> = async (req, res) => {
   try {
@@ -305,6 +315,60 @@ const executeSwap: RequestHandler<{}, any, ExecuteSwapBody> = async (req, res) =
   }
 };
 
+// Handler to get top tokens
+const getTopTokens: RequestHandler<{}, any, any, TopTokenParams> = async (req, res) => {
+  try {
+    const sortBy = req.query.sortBy;
+    const limitQuery = req.query.limit;
+    let limit: number | undefined = undefined;
+
+    if (limitQuery) {
+      limit = parseInt(limitQuery);
+      // Validate limit if provided
+      if (isNaN(limit) || limit <= 0) {
+        return res.status(400).json({ message: 'Invalid limit parameter. Must be a positive number.' });
+      }
+    }
+
+    const topTokensData = await BlockchainService.getTopTokens(sortBy, limit);
+    res.json(topTokensData);
+  } catch (error) {
+    console.error('[API Route /wallet/top-tokens] Error fetching top tokens:', error);
+    if (error instanceof Error) {
+      res.status(500).json({ message: error.message || 'Failed to fetch top tokens' });
+    } else {
+      res.status(500).json({ message: 'An unknown error occurred while fetching top tokens' });
+    }
+  }
+};
+
+// Handler to get new token listings
+const getNewTokenListings: RequestHandler<{}, any, any, NewListingsParams> = async (req, res) => {
+  try {
+    const limitQuery = req.query.limit;
+    const chainQuery = req.query.chain;
+
+    let limit: number | undefined = undefined;
+    if (limitQuery) {
+      limit = parseInt(limitQuery);
+      if (isNaN(limit) || limit <= 0) {
+        return res.status(400).json({ message: 'Invalid limit parameter. Must be a positive number.' });
+      }
+    }
+
+    // chainQuery can be passed directly as it's a string and optional in the service method
+    const newListings = await BlockchainService.getNewListings(limit, chainQuery);
+    res.json(newListings);
+  } catch (error) {
+    console.error('[API Route /new-listings] Error fetching new listings:', error);
+    if (error instanceof Error) {
+      res.status(500).json({ message: error.message || 'Failed to fetch new listings' });
+    } else {
+      res.status(500).json({ message: 'An unknown error occurred while fetching new listings' });
+    }
+  }
+};
+
 // Register routes
 router.get('/wallet/:address/assets', getWalletAssets);
 router.get('/wallet/:address/assets/prices', getWalletAssetsWithPrices);
@@ -317,5 +381,6 @@ router.post('/wallet/:address/transfer/instructions', getTransferInstructions);
 router.post('/transaction/submit', submitTransaction);
 router.post('/swap/order', getSwapOrder);
 router.post('/swap/execute', executeSwap);
-
+router.get('/wallet/top-tokens', getTopTokens);
+router.get('/new-listings', getNewTokenListings);
 export default router; 

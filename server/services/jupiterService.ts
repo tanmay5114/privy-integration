@@ -1,46 +1,93 @@
-import { Connection, PublicKey } from '@solana/web3.js';
-
-const JUPITER_API_URL = 'http://localhost:3001/api/swap';
+const JUPITER_API_URL = 'http://10.0.2.2:3001/api/swap';
+const DIRECT_JUPITER_ULTRA_ORDER_API_URL = 'https://api.jup.ag/ultra/v1/order';
 
 export class JupiterService {
-  // Get a swap order from Jupiter
+  // Get a swap order from Jupiter by calling Jupiter Ultra API directly
   static async getSwapOrder(
     inputMint: string,
     outputMint: string,
-    amount: number,
+    amount: number, // Amount in smallest unit (integer form)
     taker?: string
   ) {
     try {
-      const body: any = {
+      console.log('[JupiterService.getSwapOrder] Attempting direct POST call to Jupiter Ultra API with params:', { inputMint, outputMint, amount, taker });
+
+      if (!inputMint || !outputMint || amount === undefined) {
+        throw new Error('inputMint, outputMint, and amount are required');
+      }
+      const numericAmount = Number(amount);
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        throw new Error('amount must be a positive number');
+      }
+
+      if (typeof inputMint !== 'string' || typeof outputMint !== 'string' || (taker && typeof taker !== 'string')) {
+          throw new Error('Invalid mint or taker address format (must be string)');
+      }
+
+      const bodyPayload: any = {
         inputMint,
         outputMint,
-        amount,
+        amount: numericAmount,
       };
+
       if (taker) {
-        body.taker = taker;
+        bodyPayload.taker = taker;
       }
-      console.log('Jupiter service swap order body:',body);
-      const response = await fetch(`${JUPITER_API_URL}/order`, {
+      
+      console.log('[JupiterService.getSwapOrder] Requesting POST to Jupiter Ultra API:', DIRECT_JUPITER_ULTRA_ORDER_API_URL, 'with body:', bodyPayload);
+
+      const response = await fetch(DIRECT_JUPITER_ULTRA_ORDER_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(bodyPayload),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('JupiterService getSwapOrder error:', response.status, response.statusText, errorText);
-        throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
+        const responseBodyText = await response.text();
+        let errorData;
+        try {
+            errorData = JSON.parse(responseBodyText);
+        } catch (e) {
+            errorData = { message: `Failed to parse error response from Jupiter: ${responseBodyText}` };
+        }
+        const errorMessage = `Failed to get swap order from Jupiter Ultra API: ${response.statusText} (${response.status})${
+            errorData ? ` - ${errorData.message || JSON.stringify(errorData)}` : ''
+          }`;
+        console.error('[JupiterService.getSwapOrder] Jupiter Ultra API error:', errorMessage);
+        throw new Error(errorMessage);
       }
 
-      return await response.json();
+      const jupiterApiResponse = await response.json();
+      console.log('[JupiterService.getSwapOrder] Successfully received data from Jupiter Ultra API:', jupiterApiResponse);
+      
+      if (!jupiterApiResponse || !jupiterApiResponse.transaction || !jupiterApiResponse.requestId) {
+        if (jupiterApiResponse && jupiterApiResponse.transaction === null && !taker) {
+             console.warn('[JupiterService.getSwapOrder] Jupiter response has null transaction (expected if taker was not provided, but taker was likely provided).', jupiterApiResponse);
+        }
+        if (!jupiterApiResponse.transaction || !jupiterApiResponse.requestId) {
+             console.error('[JupiterService.getSwapOrder] Invalid or incomplete data from Jupiter Ultra API (missing transaction or requestId):', jupiterApiResponse);
+             throw new Error('Invalid or incomplete data received from Jupiter Ultra API (missing transaction or requestId).');
+        }
+      }
+      
+      return { 
+          order: jupiterApiResponse, 
+          message: "Swap order fetched directly from Jupiter Ultra API (POST)" 
+      };
+
     } catch (error: any) {
-      console.error('JupiterService getSwapOrder caught exception:', error.message, error);
-      if (error.message.startsWith('Server error:')) {
+      console.error('[JupiterService.getSwapOrder] Caught exception during direct Jupiter call:', error.message, error);
+      if (error.message.startsWith('Failed to get swap order from Jupiter Ultra API') || 
+          error.message === 'inputMint, outputMint, and amount are required' ||
+          error.message === 'amount must be a positive number' ||
+          error.message === 'Invalid mint or taker address format (must be string)' ||
+          error.message === 'Invalid or incomplete data received from Jupiter Ultra API (missing transaction or requestId).') {
         throw error;
       }
-      throw new Error(`Failed to get swap order due to: ${error.message || error}`);
+      throw new Error(`JupiterService: Failed to get swap order due to: ${error.message || String(error)}`);
     }
   }
 
@@ -80,8 +127,7 @@ export class JupiterService {
   // Get available tokens for swapping (specific to a wallet)
   static async getAvailableTokens(walletAddress: string) {
     try {
-      // Construct the specific URL directly
-      const ASSET_API_URL = `http://localhost:3001/api/wallet/${walletAddress}/assets`;
+      const ASSET_API_URL = `http://10.0.2.2:3001/api/wallet/${walletAddress}/assets`;
       const response = await fetch(ASSET_API_URL);
 
       if (!response.ok) {

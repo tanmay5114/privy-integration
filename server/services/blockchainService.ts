@@ -580,4 +580,178 @@ export class BlockchainService {
       throw new Error(`Failed to fetch wallet assets with prices: ${error}`);
     }
   }
-} 
+  static async getTopTokens(sortBy?: string, limit: number = 100) {
+    try {
+      if (!BIRDEYE_API_KEY) {
+        throw new Error('BIRDEYE_API_KEY is not defined in environment variables');
+      }
+
+      // Initialize params with limit, as it has a default
+      const queryParams: Record<string, string> = {
+        limit: limit.toString(),
+      };
+
+      // Only add sort_by if it's provided
+      if (sortBy) {
+        queryParams.sort_by = sortBy;
+      }
+      
+      const params = new URLSearchParams(queryParams);
+
+      const correctTrendingTokensApiBase = 'https://public-api.birdeye.so';
+      const fullUrl = `${correctTrendingTokensApiBase}/defi/token_trending?${params.toString()}`;
+      console.log('[BlockchainService.getTopTokens] Requesting GET from Birdeye API:', fullUrl);
+
+      const response = await fetchWithRetry(
+        fullUrl,
+        {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+            'x-api-key': BIRDEYE_API_KEY,
+            // Birdeye API for trending tokens might not require x-chain, 
+            // but if it does for filtering by chain, it would be added here.
+            // 'x-chain': 'solana' 
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const responseBodyText = await response.text();
+        console.error('[BlockchainService.getTopTokens] Birdeye API error response details:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: fullUrl,
+          body: responseBodyText,
+        });
+        let errorData;
+        try {
+            errorData = JSON.parse(responseBodyText);
+        } catch (e) {
+            errorData = { message: `Failed to parse error response from Birdeye: ${responseBodyText}` };
+        }
+        throw new Error(
+          `Failed to get top tokens from Birdeye API: ${response.statusText} (${response.status})${
+            errorData ? ` - ${errorData.message || JSON.stringify(errorData)}` : ''
+          }`
+        );
+      }
+
+      const data = await response.json();
+      console.log('[BlockchainService.getTopTokens] Successfully received data from Birdeye API:', data);
+
+      if (!data || !data.success || !data.data || !Array.isArray(data.data.tokens)) {
+        console.error('[BlockchainService.getTopTokens] Invalid or incomplete data from Birdeye API:', data);
+        throw new Error('Invalid or incomplete data received from Birdeye API for top tokens.');
+      }
+
+      // Assuming the API returns a list of tokens directly in data.tokens
+      // Adjust the mapping if the structure is different
+      return data.data.tokens.map((token: any) => ({
+        address: token.address,
+        symbol: token.symbol,
+        name: token.name,
+        logoURI: token.logoURI,
+        // Add other relevant fields from the Birdeye response
+        // e.g., volume, priceChange, marketCap, etc.
+        volume: token.extensions?.v24hUSD, // Example, adjust based on actual API response structure
+        price: token.price,
+        priceChange24h: token.extensions?.priceChange24hPercent, // Example
+      }));
+
+    } catch (error) {
+      console.error('[BlockchainService.getTopTokens] Error:', error);
+      if (error instanceof Error && error.message.startsWith('Failed to get top tokens from Birdeye API')) {
+        throw error;
+      }
+      throw new Error(`Failed to process getTopTokens in BlockchainService: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  // Get newly listed tokens using Birdeye API
+  static async getNewListings(limit: number = 50, chain: string = 'solana') {
+    try {
+      if (!BIRDEYE_API_KEY) {
+        throw new Error('BIRDEYE_API_KEY is not defined in environment variables');
+      }
+
+      const queryParams: Record<string, string> = {
+        limit: limit.toString(),
+        // The new_listing endpoint might support other params like sort_by or offset
+        // but they are not detailed in the provided doc snippet.
+        // For now, only limit is explicitly handled as a query param.
+      };
+
+      const params = new URLSearchParams(queryParams);
+      const correctNewListingsApiBase = 'https://public-api.birdeye.so'; // Base URL for this specific endpoint
+      const fullUrl = `${correctNewListingsApiBase}/defi/v2/tokens/new_listing?${params.toString()}`;
+
+      console.log('[BlockchainService.getNewListings] Requesting GET from Birdeye API:', fullUrl);
+
+      const headers: Record<string, string> = {
+        'accept': 'application/json',
+        'x-api-key': BIRDEYE_API_KEY,
+      };
+
+      if (chain) {
+        headers['x-chain'] = chain;
+      }
+
+      const response = await fetchWithRetry(
+        fullUrl,
+        {
+          method: 'GET',
+          headers: headers,
+        }
+      );
+
+      if (!response.ok) {
+        const responseBodyText = await response.text();
+        console.error('[BlockchainService.getNewListings] Birdeye API error response details:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: fullUrl,
+          body: responseBodyText,
+        });
+        let errorData;
+        try {
+            errorData = JSON.parse(responseBodyText);
+        } catch (e) {
+            errorData = { message: `Failed to parse error response from Birdeye: ${responseBodyText}` };
+        }
+        throw new Error(
+          `Failed to get new listings from Birdeye API: ${response.statusText} (${response.status})${
+            errorData ? ` - ${errorData.message || JSON.stringify(errorData)}` : ''
+          }`
+        );
+      }
+
+      const data = await response.json();
+      console.log('[BlockchainService.getNewListings] Successfully received data from Birdeye API:', data);
+
+      if (!data || !data.success || !data.data || !Array.isArray(data.data.items)) {
+        console.error('[BlockchainService.getNewListings] Invalid or incomplete data from Birdeye API:', data);
+        throw new Error('Invalid or incomplete data received from Birdeye API for new listings.');
+      }
+
+      // Assuming the API returns a list of tokens directly in data.data.items
+      // Adjust the mapping if the structure is different based on actual API response
+      return data.data.items.map((token: any) => ({
+        address: token.address,
+        symbol: token.symbol,
+        name: token.name,
+        logoURI: token.logoURI,
+        listedAt: token.listedAt, // Example, check actual response for timestamp field
+        chain: token.chain || chain, // If per-token chain info is not present, use the requested chain
+        // Add other relevant fields from the Birdeye response
+      }));
+
+    } catch (error) {
+      console.error('[BlockchainService.getNewListings] Error:', error);
+      if (error instanceof Error && error.message.startsWith('Failed to get new listings from Birdeye API')) {
+        throw error;
+      }
+      throw new Error(`Failed to process getNewListings in BlockchainService: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
