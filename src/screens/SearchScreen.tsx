@@ -47,14 +47,14 @@ const SearchScreen: React.FC = () => {
       setLoading(true);
       try {
         if (activeTab === 'Top') {
-          const response = await fetch('http://localhost:3001/api/wallet/top-tokens?limit=10');
+          const response = await fetch('https://aurumai-production.up.railway.app/api/wallet/top-tokens?limit=10');
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
           const data: ApiToken[] = await response.json();
           setTopTokensData(data.map((token, index) => ({ ...token, rank: index + 1 })));
         } else if (activeTab === 'New') {
-          const response = await fetch('http://localhost:3001/api/new-listings?limit=10');
+          const response = await fetch('https://aurumai-production.up.railway.app/api/new-listings?limit=10');
            if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }

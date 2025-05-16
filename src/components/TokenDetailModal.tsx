@@ -77,7 +77,7 @@ const TokenDetailModal: React.FC<TokenDetailModalProps> = ({
         setErrorDetails(null);
         setModalTokenDetails(null); // Clear previous details
         try {
-          const response = await fetch(`http://localhost:3001/api/token/${token.mint}/details`);
+          const response = await fetch(`https://aurumai-production.up.railway.app/api/token/${token.mint}/details`);
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ message: response.statusText }));
             throw new Error(errorData.message || `Failed to fetch token details (${response.status})`);

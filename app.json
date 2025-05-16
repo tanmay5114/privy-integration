@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Sendai Mobile",
-    "slug": "sendai-mobile",
-    "scheme": "sendaimobile",
+    "name": "Neptune Wallet",
+    "slug": "neptune-wallet",
+    "scheme": "neptunewallet",
     "version": "0.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
       "**/*"
     ],
     "android": {
-      "package": "com.sendai.mobile",
+      "package": "com.sendai.neptune",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       },
@@ -19,12 +19,22 @@
       ]
     },
     "ios": {
-      "bundleIdentifier": "com.sendai.mobile",
+      "bundleIdentifier": "com.sendai.neptune",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "We need access to your photos to let you pick images."
       },
       "appleTeamId": "YY25LDG49N"
     },
-    "newArchEnabled": false
+    "newArchEnabled": false,
+    "extra": {
+      "eas": {
+        "projectId": "5083149d-f0bd-48dd-993b-4004b22816bd"
+      }
+    },
+    "owner": "sendarcade",
+    "plugins": [
+      "expo-asset",
+      "expo-secure-store"
+    ]
   }
 }

@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 
-const JUPITER_API_URL = 'http://localhost:3001/api/swap';
+const JUPITER_API_URL = 'https://aurumai-production.up.railway.app/api/swap';
 
 export class JupiterService {
   // Get a swap order from Jupiter
@@ -81,7 +81,7 @@ export class JupiterService {
   static async getAvailableTokens(walletAddress: string) {
     try {
       // Construct the specific URL directly
-      const ASSET_API_URL = `http://localhost:3001/api/wallet/${walletAddress}/assets`;
+      const ASSET_API_URL = `https://aurumai-production.up.railway.app/api/wallet/${walletAddress}/assets`;
       const response = await fetch(ASSET_API_URL);
 
       if (!response.ok) {

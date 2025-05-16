@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '../walletProviders/hooks/useWallet';
 import { apiService, WalletAssets, Transaction } from '../services/api';
 import { REFRESH_INTERVAL } from '../constant';
+import { SERVER_URL } from '@env';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000; // 2 seconds

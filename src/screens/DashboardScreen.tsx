@@ -113,7 +113,7 @@ const DashboardScreen: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const apiBaseUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+      const apiBaseUrl = 'https://aurumai-production.up.railway.app';
       const apiUrl = `${apiBaseUrl}/api/wallet/${walletAddress}/transfer/instructions`;
       
       // Corrected: Use selectedToken.type to determine if it's native SOL
@@ -258,7 +258,7 @@ const DashboardScreen: React.FC = () => {
       
       console.log('Serialized signed transaction (no options):', serializedSignedTransaction.substring(0, 50) + "...");
 
-      const apiBaseUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+      const apiBaseUrl = 'https://aurumai-production.up.railway.app';
       const submitApiUrl = `${apiBaseUrl}/api/transaction/submit`;
 
       const submitResponse = await fetch(submitApiUrl, {

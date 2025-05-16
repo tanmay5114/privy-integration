@@ -10,9 +10,6 @@ import { SERVER_URL } from '@env';
 import { Alert } from 'react-native';
 import { createOrUpdateUser } from '@/lib/utils';
 
-// Default server URL if not provided in env
-const SERVER_BASE_URL = SERVER_URL || 'http://localhost:3001';
-
 /**
  * Hook for managing authentication and wallet connection
  * Simplified to only use Privy wallet provider

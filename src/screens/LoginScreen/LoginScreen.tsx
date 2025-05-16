@@ -21,7 +21,6 @@ import { SERVER_URL } from '@env';
 import Icons from '../../assets/svgs/index';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SERVER_BASE_URL = SERVER_URL || 'http://localhost:3000';
 
 export default function LoginScreen() {
   const navigation = useAppNavigation();
