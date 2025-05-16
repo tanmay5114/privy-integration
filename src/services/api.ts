@@ -25,6 +25,7 @@ export interface Transaction {
   type: 'send' | 'receive';
   amount: string;
   symbol: string;
+  decimals?: number;
   usdValue: number;
   status: 'confirmed' | 'pending' | 'failed';
   from: string;
@@ -158,6 +159,7 @@ function transformSolanaTxToTransaction(rawTx: any, userAddress: string): Transa
     type,
     amount,
     symbol,
+    decimals,
     usdValue: 0,
     status: rawTx.meta?.err ? 'failed' : 'confirmed',
     from,

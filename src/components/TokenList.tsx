@@ -43,7 +43,7 @@ const TokenList: React.FC<TokenListProps> = ({ tokens, onTokenPress }) => {
       <FlatList
         data={tokens}
         renderItem={renderToken}
-        keyExtractor={token => token.symbol}
+        keyExtractor={(token, index) => token.mint || `${token.symbol}-${index}`}
         contentContainerStyle={styles.list}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>

@@ -14,7 +14,30 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({
   onClose,
   transactions,
 }) => {
-  const renderTransaction = ({ item: tx }: { item: Transaction }) => (
+  const renderTransaction = ({ item: tx }: { item: Transaction }) => {
+    const numericAmount = parseFloat(tx.amount);
+    let displayDecimals = 2; // Default display decimals
+
+    if (tx.decimals !== undefined && tx.decimals > 0) {
+      if (tx.symbol === 'SOL') {
+        displayDecimals = Math.min(tx.decimals, 9); // Max 9 for SOL
+      } else {
+        displayDecimals = Math.min(tx.decimals, 6); // Max 6 for other tokens
+      }
+    }
+    // For very small non-zero amounts, ensure enough precision if decimals are known
+    // otherwise toFixed might round to 0.00 too early.
+    if (numericAmount !== 0 && Math.abs(numericAmount) < (1 / Math.pow(10, displayDecimals))) {
+        if (tx.decimals && tx.decimals > displayDecimals) {
+            displayDecimals = tx.decimals; // Use actual (or max 9/6) if amount is tiny
+            if (tx.symbol === 'SOL') displayDecimals = Math.min(displayDecimals, 9);
+            else displayDecimals = Math.min(displayDecimals, 6);
+        }
+    }
+
+    const formattedAmount = numericAmount.toFixed(displayDecimals);
+
+    return (
     <View style={styles.transactionItem}>
       <View style={styles.transactionInfo}>
         <Text style={styles.transactionType}>
@@ -32,7 +55,7 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({
           styles.amount,
           tx.type === 'send' ? styles.sentAmount : styles.receivedAmount
         ]}>
-          {tx.type === 'send' ? '-' : '+'}{parseFloat(tx.amount)} {tx.symbol}
+          {tx.type === 'send' ? '-' : '+'}{formattedAmount} {tx.symbol}
         </Text>
         <Text style={styles.usdValue}>
           ${tx.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -40,6 +63,7 @@ const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = ({
       </View>
     </View>
   );
+};
 
   return (
     <Modal

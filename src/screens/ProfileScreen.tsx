@@ -22,6 +22,7 @@ import { useWallet } from '../walletProviders/hooks/useWallet';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import COLORS from '../assets/colors';
 import { HELIUS_STAKED_API_KEY, HELIUS_STAKED_URL } from '@env';
+import { useWalletData } from '../hooks/useWalletData';
 
 const { width, height } = Dimensions.get('window');
 
@@ -143,11 +144,7 @@ export default function ProfileScreen() {
   const { logout } = useAuth();
   const { address, publicKey } = useWallet();
   const walletAddress = address || publicKey?.toString();
-
-  // State for wallet balance
-  const [balance, setBalance] = useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const { assets, loading: assetsLoading, error: assetsError, refreshData: refreshWalletData } = useWalletData();
 
   // State for transactions
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -158,12 +155,10 @@ export default function ProfileScreen() {
   const [lastSignature, setLastSignature] = useState<string | null>(null);
   
   // Refs for API rate limiting
-  const lastBalanceApiCall = useRef<number>(0);
   const lastTransactionsApiCall = useRef<number>(0);
   const minApiCallInterval = 5000; // 5 seconds between API calls
   
   // API call attempts counter for exponential backoff
-  const balanceApiAttempts = useRef<number>(0);
   const transactionsApiAttempts = useRef<number>(0);
   
   // Function to check if we can make an API call based on time elapsed
@@ -197,67 +192,6 @@ export default function ProfileScreen() {
       }),
     ]).start();
   }, []);
-
-  // Fetch balance using RPC with backoff and rate limiting
-  const fetchBalance = useCallback(async (forceRefresh = false) => {
-    if (!walletAddress || balanceLoading) return;
-    
-    // Check if we need to wait due to rate limiting
-    if (!forceRefresh && !canMakeApiCall(lastBalanceApiCall)) {
-      return;
-    }
-    
-    setBalanceLoading(true);
-    setBalanceError(null);
-    
-    lastBalanceApiCall.current = Date.now();
-    
-    try {
-      // Use a single RPC endpoint - simplified to avoid retries
-      const rpcEndpoint = SOLANA_RPC;
-      
-      // Use a timeout to avoid hanging
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
-      );
-      
-      const fetchPromise = fetch(rpcEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getBalance',
-          params: [walletAddress]
-        })
-      });
-      
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data && data.result && data.result.value !== undefined) {
-        // Convert lamports to SOL (1 SOL = 1,000,000,000 lamports)
-        setBalance(data.result.value / 1000000000);
-        // Reset attempt counter on success
-        balanceApiAttempts.current = 0;
-      } else {
-        throw new Error('Invalid response format');
-      }
-    } catch (error) {
-      console.error('Error fetching balance:', error);
-      setBalanceError('Could not load balance');
-      // No automatic retries
-    } finally {
-      setBalanceLoading(false);
-    }
-  }, [walletAddress, balanceLoading]);
 
   // Fetch transactions using Helius API
   const fetchTransactions = useCallback(
@@ -421,20 +355,6 @@ export default function ProfileScreen() {
     [walletAddress, transactionsLoading, lastSignature]
   );
 
-  // Initial data loading - only load once on mount
-  useEffect(() => {
-    let mounted = true;
-    
-    if (walletAddress && !balance && !balanceError) {
-      // Only fetch balance once initially, without automatic retries
-      fetchBalance();
-    }
-    
-    return () => {
-      mounted = false;
-    };
-  }, [walletAddress, fetchBalance, balance, balanceError]);
-
   // Initial transactions loading - with debounce to prevent excessive API calls
   useEffect(() => {
     let mounted = true;
@@ -456,7 +376,7 @@ export default function ProfileScreen() {
 
   // Handle refresh - but prevent too frequent refreshes
   const handleRefresh = useCallback(() => {
-    if (!canMakeApiCall(lastBalanceApiCall) || !canMakeApiCall(lastTransactionsApiCall)) {
+    if (!canMakeApiCall(lastTransactionsApiCall)) {
       Alert.alert(
         "Rate Limited", 
         "Please wait a few seconds before refreshing again."
@@ -466,9 +386,9 @@ export default function ProfileScreen() {
     }
     
     setRefreshing(true);
-    fetchBalance(true);
+    refreshWalletData();
     fetchTransactions(true);
-  }, [fetchBalance, fetchTransactions]);
+  }, [fetchTransactions, refreshWalletData]);
 
   // Handle load more - with rate limiting
   const handleLoadMore = useCallback(() => {
@@ -909,21 +829,15 @@ export default function ProfileScreen() {
           >
             <Text style={styles.infoTitle}>Wallet Balance</Text>
             <View style={styles.balanceRow}>
-              {balanceLoading ? (
+              {assetsLoading ? (
                 <ActivityIndicator size="small" color={COLORS.brandPrimary} />
-              ) : balanceError ? (
+              ) : assetsError ? (
                 <View style={styles.balanceErrorContainer}>
-                  <Text style={styles.infoValue}>-- SOL</Text>
+                  <Text style={styles.infoValue}>-- USD</Text> 
                   <TouchableOpacity 
                     onPress={() => {
-                      if (canMakeApiCall(lastBalanceApiCall)) {
-                        fetchBalance(true);
-                      } else {
-                        Alert.alert(
-                          "Rate Limited", 
-                          "Please wait a few seconds before retrying."
-                        );
-                      }
+                      // Consider rate limiting for refreshWalletData if needed, though hook might handle it
+                      refreshWalletData();
                     }}
                   >
                     <Ionicons name="refresh-outline" size={20} color={COLORS.darkText.tertiary} style={styles.refreshIcon} />
@@ -931,7 +845,7 @@ export default function ProfileScreen() {
                 </View>
               ) : (
                 <Text style={styles.infoValue}>
-                  {balance !== null ? `${balance.toFixed(4)} SOL` : '0 SOL'}
+                  {assets?.totalUsdValue !== undefined ? `$${assets.totalUsdValue.toFixed(2)} USD` : '$0.00 USD'}
                 </Text>
               )}
             </View>

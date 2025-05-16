@@ -549,6 +549,7 @@ export function useChat({ id, initialMessages = [], isExistingChat = false }: Us
         }
       } catch (err) {
         setStatus("error");
+        console.log('Error in chat:', err);
         console.error("Error in chat:", err);
         setError(
           err instanceof Error
