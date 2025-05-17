@@ -1,17 +1,34 @@
-# Privy Solana App Kit - React Native
+# Neptune - Your Smart Crypto Sidekick
 
-A mobile chat application that enables interaction with Solana blockchain through natural language conversation. Built with React Native, Expo, and integrated with AI for Solana transaction capabilities.
+Neptune is a next-generation smart wallet designed to simplify your crypto journey. We address the common frustrations of confusing interfaces, fragmented experiences, and the fear of costly mistakes by providing an intuitive, AI-powered assistant.
 
 ## Features
 
-- Embedded wallet authentication with Privy (Google, Apple, Email)
-- Chat interface for natural language interaction with Solana blockchain
-- Solana transaction capabilities through AI assistant
-- Chat history management
-- User profile management
+*   **Conversational Interface:** Interact with your wallet like you're talking to a friend. Get insights and perform actions using natural language.
+*   **Proactive Suggestions:** Neptune learns your trading, swapping, and staking habits to offer timely and relevant suggestions, helping you optimize your crypto activities.
+*   **Enhanced Security:**
+    *   **Sketchy Transaction Warnings:** Receive alerts for potentially suspicious transactions, adding an extra layer of protection.
+    *   **Key Security:** Smart wallet functionality without compromising the security and self-custody of your keys.
+*   **Simplified Asset Management:**
+    *   Easily understand tokens and chains.
+    *   Track assets across different wallets seamlessly.
+    *   Swap and claim tokens with ease.
+*   **AutoPilot Mode:** Choose your investment style (e.g., Degen, Chill, Safe), and let Neptune guide your crypto flow.
+*   **AI-Powered Insights:** Understand your past activity and plan future moves with AI-driven analysis and suggestions.
 
-## Demo
+## Addressing Key Crypto Challenges
 
+*   **User Experience:** We transform complex crypto operations into simple, powerful actions, balancing ease-of-use with full control.
+*   **AI Trust & Control:** Our AI provides explainable suggestions and automations, ensuring you remain in control of your funds.
+*   **Integration Simplicity:** We handle the complexities of fragmented APIs, SDKs, and diverse blockchain node behaviors, so you don't have to.
+
+## Coming Soon
+
+*   **Copilot Chat:** Deeper conversational AI capabilities.
+*   **DeFi Rituals:** Automate your common DeFi interactions.
+*   **Guild Mode:** Collaborative features for squads and groups.
+
+This isn't just a wallet. It's your crypto sidekick — finally.
 
 ## Prerequisites
 
