@@ -78,9 +78,9 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
                   case 'SwapTab':
                     iconName = isFocused ? 'swap-horizontal' : 'swap-horizontal-outline';
                     break;
-                  case 'ChatHistoryTab':
-                    iconName = isFocused ? 'chatbubbles' : 'chatbubbles-outline';
-                    break;
+                  //case 'ChatHistoryTab':
+                  //  iconName = isFocused ? 'chatbubbles' : 'chatbubbles-outline';
+                  //  break;
                   case 'ProfileTab':
                     iconName = isFocused ? 'person' : 'person-outline';
                     break;
@@ -94,14 +94,14 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
                     return;
                   }
                   
-                  if (route.name === 'ChatTab') {
-                    navigation.dispatch(
-                      CommonActions.navigate({
-                        name: 'Chat',
-                      })
-                    );
-                    return;
-                  }
+                  // if (route.name === 'ChatTab') {
+                  //   navigation.dispatch(
+                  //     CommonActions.navigate({
+                  //       name: 'Chat',
+                  //     })
+                  //   );
+                  //   return;
+                  // }
                   
                   const event = navigation.emit({
                     type: 'tabPress',
@@ -231,16 +231,16 @@ const SafeAreaWrapper: React.FC<{children: React.ReactNode}> = ({ children }) =>
 //   );
 // };
 
-const AnimatedChatHistoryScreen: React.FC<any> = (props) => {
-  const isFocused = useIsFocused();
-  return (
-    <AnimatedScreen isFocused={isFocused}>
-      <SafeAreaWrapper>
-        <ChatHistoryScreen {...props} />
-      </SafeAreaWrapper>
-    </AnimatedScreen>
-  );
-};
+// const AnimatedChatHistoryScreen: React.FC<any> = (props) => {
+//   const isFocused = useIsFocused();
+//   return (
+//     <AnimatedScreen isFocused={isFocused}>
+//       <SafeAreaWrapper>
+//         <ChatHistoryScreen {...props} />
+//       </SafeAreaWrapper>
+//     </AnimatedScreen>
+//   );
+// };
 
 const AnimatedProfileScreen: React.FC<any> = (props) => {
   const isFocused = useIsFocused();
@@ -308,13 +308,13 @@ export default function MainTabs() {
           tabBarLabel: 'Swap',
         }}
       />
-      <Tab.Screen
+      {/* <Tab.Screen
         name="ChatHistoryTab"
         component={AnimatedChatHistoryScreen}
         options={{
           tabBarLabel: 'Chat',
         }}
-      />
+      /> */}
       <Tab.Screen
         name="ProfileTab"
         component={AnimatedProfileScreen}

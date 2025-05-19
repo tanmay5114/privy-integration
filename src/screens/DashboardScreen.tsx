@@ -16,6 +16,7 @@ import { useWalletData } from '../hooks/useWalletData';
 import { WalletAsset } from '../services/api';
 import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { Buffer } from 'buffer';
+import SwapLoadingScreen from '../components/SwapLoadingScreen';
 
 const DashboardScreen: React.FC = () => {
   console.log('--- DASHBOARD SCREEN RENDERING --- Re-adding Send Logic State ---');
@@ -40,6 +41,9 @@ const DashboardScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [transferInstructions, setTransferInstructions] = useState<any>(null); // We might not set this, but good to have if needed
+
+  const [showSendConfirmation, setShowSendConfirmation] = useState(false);
+  const [lastTxSignature, setLastTxSignature] = useState<string | null>(null);
 
   const handleSend = () => {
     console.log('[handleSend] Called. Current modalVisible state:', modalVisible);
@@ -163,6 +167,20 @@ const DashboardScreen: React.FC = () => {
     }
   };
 
+  // Helper to wait for transaction confirmation
+  async function waitForConfirmation(signature: string, connection: Connection, maxTries = 30): Promise<boolean> {
+    let tries = 0;
+    while (tries < maxTries) {
+      const result = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+      if (result && result.value && (result.value.confirmationStatus === 'confirmed' || result.value.confirmationStatus === 'finalized')) {
+        return true;
+      }
+      await new Promise(res => setTimeout(res, 1000)); // Wait 1 second
+      tries++;
+    }
+    return false;
+  }
+
   // Function to handle the send action (re-added)
   const handleSendAction = async () => {
     setSendError(null); // Clear previous error
@@ -271,21 +289,22 @@ const DashboardScreen: React.FC = () => {
       if (!submitResponse.ok) {
         let errorData;
         try { errorData = JSON.parse(submitResponseBody); } catch (e) { errorData = { message: `Server responded with ${submitResponse.status}: ${submitResponseBody}` }; }
+        setIsSubmitting(false);
         throw new Error(errorData.message || `Failed to submit transaction. Status: ${submitResponse.status}`);
       }
       
       const submitData = JSON.parse(submitResponseBody);
-      Alert.alert('Transaction Submitted', `Signature: ${(submitData.signature || 'N/A').substring(0, 10)}...`, [{ text: 'OK' }]);
-
-      setModalVisible(false); 
-      refreshData(); 
-      setSendAmount(''); 
-      setRecipient(''); 
+      setLastTxSignature(submitData.signature || null);
+      // Wait for confirmation
+      const confirmed = await waitForConfirmation(submitData.signature, connection);
+      if (confirmed) {
+        setShowSendConfirmation(true);
+      }
+      setIsSubmitting(false);
 
     } catch (e: any) {
       console.error('Error during send action:', e);
       let detailedError = e.message || 'An unexpected error occurred during the send process.';
-      
       // Attempt to get more detailed logs if it's a SendTransactionError
       if (e.logs && Array.isArray(e.logs)) {
         const logsMessage = "\nSimulation Logs:\n" + e.logs.join('\n');
@@ -303,10 +322,8 @@ const DashboardScreen: React.FC = () => {
           console.error('Failed to get logs from error object:', logError);
         }
       }
-
       setSendError(detailedError);
-    } finally {
-      setIsSubmitting(false); // Ensure isSubmitting is reset in all cases
+      setIsSubmitting(false);
     }
   };
 
@@ -372,6 +389,33 @@ const DashboardScreen: React.FC = () => {
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={refreshData}>
           <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (isSubmitting) {
+    return <SwapLoadingScreen />;
+  }
+
+  if (showSendConfirmation) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#10151A' }}>
+        <Text style={{ color: '#fff', fontSize: 20, marginBottom: 20 }}>Transaction Submitted!</Text>
+        <Text style={{ color: '#3ED2C3', fontSize: 16, marginBottom: 20 }}>
+          Signature: {lastTxSignature ? lastTxSignature.substring(0, 10) + '...' : 'N/A'}
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: '#3ED2C3', padding: 16, borderRadius: 10 }}
+          onPress={() => {
+            setShowSendConfirmation(false);
+            setModalVisible(false);
+            refreshData();
+            setSendAmount('');
+            setRecipient('');
+          }}
+        >
+          <Text style={{ color: '#10151A', fontWeight: 'bold', fontSize: 16 }}>OK</Text>
         </TouchableOpacity>
       </View>
     );

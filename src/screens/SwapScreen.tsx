@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, TextInput, Image, Modal, FlatList, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ImageBackground, TouchableOpacity, TextInput, Image, Modal, FlatList, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useWallet } from '@/walletProviders';
 import { Transaction, VersionedTransaction } from '@solana/web3.js'; // Import for Solana Transaction
@@ -7,6 +7,7 @@ import { Buffer } from 'buffer'; // Import Buffer for base64 operations
 import AppHeader from '../components/AppHeader';
 import WalletDrawer from '../components/WalletDrawer';
 import { JupiterService } from '../../server/services/jupiterService';
+import SwapLoadingScreen from '../components/SwapLoadingScreen'; // Import the new loading screen
 
 const SwapScreen: React.FC = () => {
   const [amount, setAmount] = useState('');
@@ -27,6 +28,7 @@ const SwapScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [tokenSelectionFor, setTokenSelectionFor] = useState<'input' | 'output' | null>(null);
+  const [isExecutingSwap, setIsExecutingSwap] = useState(false); // New state for swap execution
 
   useEffect(() => {
     const setupTokens = () => {
@@ -137,23 +139,18 @@ const SwapScreen: React.FC = () => {
   const handleExecuteSwap = async () => {
     if (!wallet || !connected) {
       setError("Wallet not connected or not ready. Please connect your wallet.");
-      setIsLoading(false);
       return;
     }
 
     if (!swapQuote || !swapQuote.order || !swapQuote.order.requestId || !swapQuote.order.transaction) {
       setError("No valid quote available to execute, or quote is missing transaction details.");
-      setIsLoading(false); // Ensure loading is stopped
       return;
     }
-    setIsLoading(true);
+    setIsExecutingSwap(true);
     setError(null);
     try {
       // --- Wallet Integration Point: Start ---
-      // 1. Get the base64 encoded transaction string from the swapQuote.
       const unsignedTransactionBase64 = swapQuote.order.transaction;
-
-      // 2. Deserialize the base64 transaction string into a Solana Transaction object
       let transaction: VersionedTransaction;
       try {
         const transactionBuffer = Buffer.from(unsignedTransactionBase64, 'base64');
@@ -161,59 +158,60 @@ const SwapScreen: React.FC = () => {
       } catch (e: any) {
         console.error("Failed to deserialize transaction:", e);
         setError(`Failed to prepare transaction for signing: ${e.message}`);
-        setIsLoading(false);
+        setIsExecutingSwap(false);
         return;
       }
 
-      // 3. Sign the transaction with the Privy wallet
       let signedTxObject: Transaction | VersionedTransaction;
       try {
         signedTxObject = await signTransaction!(transaction);
       } catch (e: any) {
         console.error("Transaction signing failed or was rejected:", e);
         setError(`Transaction signing failed: ${e.message}`);
-        setIsLoading(false);
+        setIsExecutingSwap(false);
         return;
       }
       
-      // 4. Serialize the signed transaction and convert it to base64
       let signedTransactionBase64: string;
       try {
-        // For Jupiter, often requireAllSignatures can be false as Jupiter might co-sign or handle fee payment.
-        // If your backend expects the transaction to be fully signed by the user as the sole/final signer, set to true.
         const serializedSignedTx = signedTxObject.serialize();
         signedTransactionBase64 = Buffer.from(serializedSignedTx).toString('base64');
       } catch (e: any) {
         console.error("Failed to serialize signed transaction:", e);
         setError(`Failed to prepare signed transaction for execution: ${e.message}`);
-        setIsLoading(false);
+        setIsExecutingSwap(false);
         return;
       }
 
       if (!signedTransactionBase64) {
         setError("Transaction signing was cancelled or failed.");
-        setIsLoading(false);
+        setIsExecutingSwap(false);
         return;
       }
       
       const result = await JupiterService.executeSwapOrder(
-        signedTransactionBase64, // Pass the signed transaction
-        swapQuote.order.requestId // Pass the requestId from the order object
+        signedTransactionBase64,
+        swapQuote.order.requestId
       );
       console.log("Swap executed:", result);
-      // TODO: Handle successful swap (e.g., show success message, refresh balances, clear amount)
-      setAmount(''); // Clear amount after successful swap
-      setSwapQuote(null); // Clear the quote
+      
+      // Swap successful actions:
+      setAmount(''); 
+      setSwapQuote(null);
+      setError(null);
+      Alert.alert("Success", "Swap completed successfully!");
+
     } catch (e: any) {
       setError(e.message || "Failed to execute swap.");
     } finally {
-      setIsLoading(false);
+      setIsExecutingSwap(false);
     }
   };
 
   const openTokenModal = (selectionType: 'input' | 'output') => {
     setTokenSelectionFor(selectionType);
     setIsModalVisible(true);
+    setError(null); // Clear previous error
   };
 
   const handleTokenSelect = (selectedToken: any) => {
@@ -233,6 +231,10 @@ const SwapScreen: React.FC = () => {
     setSwapQuote(null); // Clear previous quote as tokens changed
     setError(null); // Clear previous error
   };
+
+  if (isExecutingSwap) {
+    return <SwapLoadingScreen />;
+  }
 
   return (
     <ImageBackground source={require('../assets/images/new_dashboard_bg.png')} style={styles.container} resizeMode="cover">

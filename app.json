@@ -21,7 +21,10 @@
     "ios": {
       "bundleIdentifier": "com.sendai.neptune",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "We need access to your photos to let you pick images."
+        "NSPhotoLibraryUsageDescription": "We need access to your photos to let you pick images.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       },
       "appleTeamId": "YY25LDG49N"
     },
