@@ -154,7 +154,7 @@ const SwapScreen: React.FC = () => {
       let transaction: VersionedTransaction;
       try {
         const transactionBuffer = Buffer.from(unsignedTransactionBase64, 'base64');
-        transaction = VersionedTransaction.deserialize(transactionBuffer);
+        transaction = VersionedTransaction.deserialize(new Uint8Array(transactionBuffer));
       } catch (e: any) {
         console.error("Failed to deserialize transaction:", e);
         setError(`Failed to prepare transaction for signing: ${e.message}`);

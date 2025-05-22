@@ -376,18 +376,9 @@ export class BlockchainService {
       }
 
       // Ensure amount is a valid number and convert to string
-      const amountNum = Number(amount);
-      const amountStr = amountNum.toString();
-      if (isNaN(amountNum) || amountNum <= 0) {
+      const amountStr = amount.toString();
+      if (isNaN(Number(amountStr)) || Number(amountStr) <= 0) {
         throw new Error('amount must be a positive number');
-      }
-
-      // Calculate 0.5% fee
-      const FEE_BPS = 50; // 0.5% = 50 basis points
-      const feeAmount = Math.floor(amountNum * FEE_BPS / 10000);
-      const netAmount = amountNum - feeAmount;
-      if (netAmount <= 0) {
-        throw new Error('Amount after fee must be positive');
       }
 
       // Validate mint addresses format
@@ -407,65 +398,17 @@ export class BlockchainService {
         }
       }
 
-      // Send the fee to the fee wallet
-      let feeTransferSignature = null;
-      const feeWalletPrivateKey = process.env.FEE_WALLET_PRIVATE_KEY;
-      const feeWalletAddress = process.env.FEE_WALLET_ADDRESS;
-      if (!feeWalletPrivateKey || !feeWalletAddress) {
-        throw new Error('FEE_WALLET_PRIVATE_KEY or FEE_WALLET_ADDRESS is not set in environment variables');
-      }
-
-      // The taker is the user's wallet address (payer)
-      if (!taker) {
-        throw new Error('Taker (user wallet address) is required to collect the fee');
-      }
-
-      // Only send fee if feeAmount > 0
-      if (feeAmount > 0) {
-        // If inputMint is native SOL
-        if (inputMint === 'So11111111111111111111111111111111111111112') {
-          // Transfer SOL
-          const fromPubKey = new PublicKey(taker);
-          const toPubKey = new PublicKey(feeWalletAddress);
-          const instruction = SystemProgram.transfer({
-            fromPubkey: fromPubKey,
-            toPubkey: toPubKey,
-            lamports: feeAmount,
-          });
-          // NOTE: You may want to return this instruction to the client for signing, or handle it server-side if you have the user's key (not recommended)
-          // For now, just return the instruction details
-          feeTransferSignature = {
-            type: 'sol',
-            from: taker,
-            to: feeWalletAddress,
-            lamports: feeAmount,
-            instruction: instruction,
-          };
-        } else {
-          // SPL Token transfer
-          // Return the transfer instruction details for the client to sign
-          feeTransferSignature = {
-            type: 'spl',
-            from: taker,
-            to: feeWalletAddress,
-            mint: inputMint,
-            amount: feeAmount,
-          };
-        }
-      }
-
-      // Use netAmount for the swap order
       const params = new URLSearchParams({
         inputMint,
         outputMint,
-        amount: netAmount.toString(),
+        amount: amountStr,
         ...(taker && { taker })
       });
 
       console.log('Requesting swap order with params:', {
         inputMint,
         outputMint,
-        amount: netAmount.toString(),
+        amount: amountStr,
         taker
       });
 
@@ -494,14 +437,7 @@ export class BlockchainService {
         throw new Error('Invalid response from Jupiter API');
       }
 
-      // Return both the swap order and the fee transfer instruction/signature
-      return {
-        order: data,
-        fee: {
-          feeAmount,
-          feeTransfer: feeTransferSignature,
-        }
-      };
+      return data;
     } catch (error) {
       console.error('Jupiter swap order error:', error);
       throw new Error(`Failed to get swap order: ${error instanceof Error ? error.message : String(error)}`);
@@ -906,5 +842,4 @@ export class BlockchainService {
       throw new Error(`Failed to process getTokenGeneralDetails for ${mintAddress} using token_overview: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
 }
