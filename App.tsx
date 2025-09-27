@@ -1,21 +1,36 @@
-import { ScreenContent } from 'components/ScreenContent';
-
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './global.css';
-import { View, Text } from 'react-native';
+import { StatusBar } from 'react-native';
+import {PrivyProvider } from '@privy-io/expo';
+import {PrivyElements} from '@privy-io/expo/ui';
+import {DefaultCustomizationConfig} from './src/config';
+import {CustomizationProvider} from './src/CustomizationProvider';
+import { PRIVY_APP_ID, PRIVY_CLIENT_ID } from "./src/config/env"; // or adjust path based on file location
+
 
 export default function App() {
+  const config = DefaultCustomizationConfig;
   return (
-    <>
-      {/* <ScreenContent title="Home" path="App.tsx"></ScreenContent> */}
-      <View>
-        <Text className='bg-red-500 mt-20'>
-          Hi, hello how are you
-        </Text>
-        <Text className='bg-yellow-500'>
-          See mee
-        </Text>
-
-      </View>
-    </>
+    <SafeAreaProvider>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#000000"
+        translucent={false}
+      />
+      <CustomizationProvider>
+        <PrivyProvider
+          appId={PRIVY_APP_ID}
+          clientId={PRIVY_CLIENT_ID}
+          config={{
+            embedded: {
+              solana: {
+                createOnLogin: 'users-without-wallets',
+              },
+            },
+          }}>  
+        <PrivyElements />
+        </PrivyProvider>
+      </CustomizationProvider>
+    </SafeAreaProvider>
   );
 }
