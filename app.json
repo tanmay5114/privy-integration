@@ -24,20 +24,22 @@
         "NSPhotoLibraryUsageDescription": "We need access to your photos to let you pick images.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       },
       "appleTeamId": "YY25LDG49N"
     },
     "newArchEnabled": false,
-    "extra": {
-      "eas": {
-        "projectId": "5083149d-f0bd-48dd-993b-4004b22816bd"
-      }
-    },
-    "owner": "sendarcade",
+    "owner": "tanmayjain5114",
     "plugins": [
       "expo-asset",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5c556a49-ebd9-485e-bf93-6679a9f897d5"
+      }
+    }
   }
 }
