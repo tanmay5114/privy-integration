@@ -1,3 +1,4 @@
+import './src/polyfills';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './global.css';
 import { StatusBar } from 'react-native';

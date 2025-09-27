@@ -1,60 +1,64 @@
-// src/polyfills.ts
-// This file provides polyfills for Node.js built-ins used by various crypto libraries
+// polyfills-alt.ts
+// Import order is crucial - start with the most basic polyfills
 
-import { Buffer } from 'buffer';
-import { Platform } from 'react-native';
-global.Buffer = Buffer;
-
-// Import core crypto functionality
+// 1. Random values first (required by many crypto operations)
 import 'react-native-get-random-values';
-import 'react-native-quick-crypto';
 
-// Ensure process is available
+// 2. Text encoding
+import 'fast-text-encoding';
+
+// 3. Process polyfill
 import process from 'process';
-if (!global.process) {
+if (typeof global.process === 'undefined') {
   global.process = process;
 }
 
-// Additional globals that might be needed
-if (typeof global.TextEncoder === 'undefined') {
-  global.TextEncoder = require('text-encoding').TextEncoder;
+// 4. Buffer polyfill
+import { Buffer } from 'buffer';
+if (typeof global.Buffer === 'undefined') {
+  global.Buffer = Buffer;
 }
 
-if (typeof global.TextDecoder === 'undefined') {
-  global.TextDecoder = require('text-encoding').TextDecoder;
-}
+// 5. Stream polyfill (required by crypto)
+import 'stream-browserify';
 
-// Add ReadableStream polyfill
-if (typeof global.ReadableStream === 'undefined') {
-  const { ReadableStream } = require('web-streams-polyfill');
-  global.ReadableStream = ReadableStream;
-}
+// 6. Crypto polyfill
+import 'react-native-crypto';
 
-// Ensure EXPO_OS is defined
-if (typeof process.env.EXPO_OS === 'undefined') {
-  process.env.EXPO_OS = Platform.OS;
-}
+// 7. Global polyfills
+import 'react-native-polyfill-globals/auto';
 
-// Polyfill for axios in Hermes environment
-try {
-  // Try to load axios
-  const axios = require('axios');
-  
-  // Check if axios.default is undefined but axios has methods
-  if (!axios.default && axios.request) {
-    // This happens with Hermes - patch it
-    // @ts-ignore
-    axios.default = axios;
+// 8. Ethers shims last
+import '@ethersproject/shims';
+
+// Defensive initialization
+const initializePolyfills = () => {
+  // Ensure crypto is available
+  if (!global.crypto) {
+    try {
+      global.crypto = require('react-native-crypto');
+    } catch (e) {
+      console.warn('Failed to initialize crypto:', e);
+    }
   }
-} catch (e) {
-  console.warn('Failed to preload axios:', e);
-}
 
-// Export a function that ensures Buffer is available
-export const ensureBuffer = () => {
-  if (typeof global.Buffer === 'undefined') {
-    console.warn('Buffer is not defined, attempting to polyfill again');
+  // Ensure getRandomValues is available
+  if (global.crypto && !global.crypto.getRandomValues) {
+    try {
+      const { getRandomValues } = require('react-native-get-random-values');
+      global.crypto.getRandomValues = getRandomValues;
+    } catch (e) {
+      console.warn('Failed to initialize getRandomValues:', e);
+    }
+  }
+
+  // Ensure Buffer is available
+  if (!global.Buffer) {
     global.Buffer = Buffer;
   }
-  return global.Buffer;
-}; 
+};
+
+// Initialize immediately
+initializePolyfills();
+
+export { initializePolyfills };

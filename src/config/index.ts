@@ -1,7 +1,9 @@
 import { PRIVY_APP_ID, PRIVY_CLIENT_ID } from "./env"; // or adjust path based on file location
 
-const DEFAULT_PRIVY_APP_ID = 'cmao4yp4t00aml70npjzntz2m';
-const DEFAULT_PRIVY_CLIENT_ID = 'client-WY6LJYuq5ktV4GyCTSqGrb8uuqrP5n9fDbNnQZ8EJrn7Z';
+const DEFAULT_PRIVY_APP_ID = '';
+const DEFAULT_PRIVY_CLIENT_ID = '';
+
+console.log("privy app is: ", PRIVY_APP_ID);
 
 export interface PrivyConfig {
   appId: string;

@@ -3,12 +3,18 @@
   "compilerOptions": {
     "strict": true,
     "jsx": "react-jsx",
-
     "baseUrl": ".",
     "paths": {
-      "~/*": ["src/*"],
-      "@env": ["src/config/env"]
+      "~/*": [
+        "src/*"
+      ],
+      "@env": [
+        "src/config/env"
+      ]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "nativewind-env.d.ts"
+  ]
 }
