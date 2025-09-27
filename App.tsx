@@ -6,7 +6,9 @@ import {PrivyElements} from '@privy-io/expo/ui';
 import {DefaultCustomizationConfig} from './src/config';
 import {CustomizationProvider} from './src/CustomizationProvider';
 import { PRIVY_APP_ID, PRIVY_CLIENT_ID } from "./src/config/env"; // or adjust path based on file location
-
+import {navigationRef} from './src/hooks/useAppNavigation';
+import {NavigationContainer} from '@react-navigation/native';
+import RootNavigator from './src/navigation/RootNavigator';
 
 export default function App() {
   const config = DefaultCustomizationConfig;
@@ -28,6 +30,9 @@ export default function App() {
               },
             },
           }}>  
+            <NavigationContainer ref={navigationRef}>
+              <RootNavigator />
+            </NavigationContainer>
         <PrivyElements />
         </PrivyProvider>
       </CustomizationProvider>
